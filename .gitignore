@@ -1,0 +1,8 @@
+node_modules/
+data/
+generated/
+.venv/
+.env
+
+# Datos de personajes personales (el seed genérico vive en character_data.js).
+character_data.local.js

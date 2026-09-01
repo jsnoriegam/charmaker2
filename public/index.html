@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CharMaker2</title>
+  <link rel="stylesheet" href="vendor/normalize.min.css">
+  <link rel="stylesheet" href="style.css">
+  <script defer src="vendor/alpine.min.js"></script>
+</head>
+<body x-data="app()" x-init="boot()" x-effect="document.body.style.overflow = anyModalOpen() ? 'hidden' : ''" @keydown.window.escape="closeTopModal()" @keydown.window.left="galleryCompareNav(-1)" @keydown.window.right="galleryCompareNav(1)">
+
+  <div class="shell">
+    <aside class="sidebar">
+      <button class="sidebar-brand" @click="go('characters')">
+        <span class="brand-mark"></span>
+        <span class="brand-name">Char Maker v2</span>
+      </button>
+
+      <nav class="sidebar-nav">
+        <button class="nav-btn" :class="{active: view==='characters' || view==='character'}" @click="go('characters'); detail=null">
+          Personajes
+        </button>
+        <button class="nav-btn" :class="{active: view==='gallery'}" @click="go('gallery')">
+          Galería
+        </button>
+        <button class="nav-btn" :class="{active: view==='framings'}" @click="go('framings')">
+          Framings
+        </button>
+        <button class="nav-btn" :class="{active: view==='accessories'}" @click="go('accessories')">
+          Accesorios
+        </button>
+        <button class="nav-btn" :class="{active: view==='globals'}" @click="go('globals')">
+          Prompts globales
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div id="sd-status" class="status-badge" :class="config && config.sdBinaryExists ? 'ok' : 'err'" x-show="config">
+          <span class="status-dot"></span>
+          <span x-text="config && (config.sdBinaryExists ? 'sd-cli listo' + (config.rembg.available ? ' · rembg' : ' · sin rembg') : 'sd-cli no encontrado')"></span>
+        </div>
+        <div class="sidebar-actions">
+          <button class="btn btn-sm" @click="exportJSON()">Exportar JSON</button>
+          <button class="btn btn-sm" @click="$refs.importFile.click()">Importar JSON</button>
+          <input type="file" x-ref="importFile" accept="application/json" hidden @change="importJSON($event)">
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-col">
+      <main>
+        <!-- ============ PERSONAJES: listado ============ -->
+        <section x-show="view==='characters'">
+          <div class="view-header">
+            <h2>Personajes</h2>
+            <button class="btn btn-primary" @click="openCharModal(null)">+ Nuevo personaje</button>
+          </div>
+          <input
+            type="search"
+            class="char-search"
+            placeholder="Buscar por clave o identidad…"
+            x-model="charSearch"
+          >
+          <div class="cards">
+            <template x-for="c in filteredCharacters()" :key="c.key">
+              <div class="char-card" @click="openCharacter(c.key)">
+                <div class="char-avatar" :style="avatarStyle(c)">
+                  <span x-show="!avatarStyle(c)" x-text="c.key[0].toUpperCase()"></span>
+                </div>
+                <div class="char-info">
+                  <b x-text="c.key"></b>
+                  <span class="muted" x-text="c.identity.slice(0, 70)"></span>
+                  <span class="muted small"><span x-text="c.bases_count"></span> bases · <span x-text="c.variants_count"></span> variantes</span>
+                </div>
+              </div>
+            </template>
+            <p x-show="!characters.length" class="muted">No hay personajes todavía. Creá uno con el botón de arriba.</p>
+            <p x-show="characters.length && !filteredCharacters().length" class="muted">
+              Ningún personaje coincide con "<span x-text="charSearch"></span>".
+            </p>
+          </div>
+        </section>
+
+        <!-- ============ PERSONAJE: detalle ============ -->
+        <section x-show="view==='character' && detail">
+          <template x-if="detail">
+            <div>
+              <div class="view-header">
+                <h2><button class="btn btn-sm" @click="view='characters'; loadCharacters()">←</button> <span x-text="detail.key"></span></h2>
+                <div class="btn-row">
+                  <button class="btn btn-primary" @click="openBaseModal(null)">+ Generar base</button>
+                  <button class="btn" :class="{ 'btn-primary': detail.bases.some(b=>b.image_path) }"
+                          :disabled="!detail.bases.some(b=>b.image_path)"
+                          @click="openVariantModal(null)">+ Generar variante</button>
+                  <button class="btn btn-danger" @click="confirmDelete('Personaje', `Eliminar ${detail.key} con sus ${detail.bases.length} bases y ${detail.variants.length} variantes (y sus imágenes).`, () => deleteCharacter())">Eliminar personaje</button>
+                </div>
+              </div>
+              <p class="muted" x-show="!detail.bases.some(b=>b.image_path)">Generá al menos una base antes de crear variantes: las variantes toman la cara de una base ya generada.</p>
+
+              <fieldset class="identity-box">
+                <legend>Identidad (solo rasgos — la ropa se define por base/variante)</legend>
+                <div class="editor-grid">
+                  <label>Lighting <input x-model="detail.char.lighting"></label>
+                  <label class="full">Identity <textarea x-model="detail.char.identity" rows="2"></textarea></label>
+                  <label class="full">Face <textarea x-model="detail.char.face" rows="2"></textarea></label>
+                  <label class="full">Hair <textarea x-model="detail.char.hair" rows="1"></textarea></label>
+                  <label class="full">Body <textarea x-model="detail.char.body" rows="1"></textarea></label>
+                  <label class="full">Negative identity (rasgos, NUNCA ropa) <textarea x-model="detail.char.negative_identity" rows="2"></textarea></label>
+                </div>
+                <button class="btn btn-primary btn-sm" @click="saveIdentity()">Guardar identidad</button>
+              </fieldset>
+
+              <h3>Bases <span class="muted" x-text="`(${detail.bases.length})`"></span></h3>
+              <div class="cards">
+                <template x-for="b in detail.bases" :key="'b'+b.id">
+                  <div class="item-card">
+                    <div class="item-img" @click="openBaseModal(b)">
+                      <img x-show="b.image_path" :src="b.image_path" loading="lazy">
+                      <span x-show="!b.image_path" class="muted">sin generar</span>
+                    </div>
+                    <div class="item-body">
+                      <b x-text="'base ' + b.id"></b>
+                      <span class="muted small" x-text="`${b.framing_key} · ${b.steps} steps · cfg ${b.cfg} · seed ${b.seed ?? '—'}`"></span>
+                      <span class="muted small ellipsis" x-text="b.clothing"></span>
+                    </div>
+                    <div class="item-actions">
+                      <button class="btn btn-sm" x-text="b.image_path ? 'Editar' : 'Generar'" @click="openBaseModal(b)"></button>
+                      <button class="btn btn-sm" @click="cloneBase(b.id)">Clonar</button>
+                      <button class="btn btn-danger btn-sm" @click="confirmDelete('Base', `Eliminar base ${b.id} y su imagen.`, () => deleteBase(b.id))">×</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+              <h3>Variantes <span class="muted" x-text="`(${detail.variants.length})`"></span></h3>
+              <div class="cards">
+                <template x-for="v in detail.variants" :key="'v'+v.id">
+                  <div class="item-card">
+                    <div class="item-img" @click="openVariantModal(v)">
+                      <img x-show="v.image_path" :src="v.image_path" loading="lazy">
+                      <span x-show="!v.image_path" class="muted">sin generar</span>
+                    </div>
+                    <template x-if="inpaintsFor(v.id).length">
+                      <div class="inpaint-thumbs">
+                        <template x-for="ip in inpaintsFor(v.id)" :key="'ip'+ip.id">
+                          <div class="inpaint-thumb" :title="`inpaint: ${ip.label} — click para ver/reusar la config`">
+                            <img x-show="ip.image_path" :src="ip.image_path" loading="lazy" @click.stop="openInpaintModal(v, ip)">
+                            <span x-show="!ip.image_path" class="muted small">…</span>
+                            <button class="inpaint-del" @click.stop="confirmDelete('Inpaint', `Eliminar inpaint ${ip.label} y su imagen.`, () => deleteInpaint(ip.id))" title="Eliminar">×</button>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                    <div class="item-body">
+                      <b x-text="v.label || ('variante ' + v.id)"></b>
+                      <span class="muted small" x-text="`${v.framing_key} · ${v.method} · seed ${v.seed ?? '—'}${v.accessories.length ? ' · ' + v.accessories.join(', ') : ''}`"></span>
+                      <span class="muted small ellipsis" x-text="v.expression"></span>
+                      <span class="muted small ellipsis" x-text="v.clothing"></span>
+                    </div>
+                    <div class="item-actions">
+                      <button class="btn btn-sm" x-text="v.image_path ? 'Editar' : 'Generar'" @click="openVariantModal(v)"></button>
+                      <button class="btn btn-sm" x-show="v.image_path" @click="openInpaintModal(v)">Inpintar</button>
+                      <button class="btn btn-sm" @click="cloneVariant(v.id)">Clonar</button>
+                      <button class="btn btn-danger btn-sm" @click="confirmDelete('Variante', `Eliminar variante ${v.label || v.id} y su imagen.`, () => deleteVariant(v.id))">×</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+        </section>
+
+        <!-- ============ GALERÍA ============ -->
+        <section x-show="view==='gallery'">
+          <div class="view-header">
+            <h2>Galería</h2>
+            <div class="gallery-filters">
+              <select x-model="galleryFilter.character">
+                <option value="">Todos los personajes</option>
+                <template x-for="k in galleryCharacters()" :key="k"><option :value="k" x-text="k"></option></template>
+              </select>
+              <div class="chips">
+                <button class="chip" :class="{active: !galleryFilter.kind}" @click="galleryFilter.kind=''">Todas</button>
+                <button class="chip" :class="{active: galleryFilter.kind==='base'}" @click="galleryFilter.kind='base'">Bases</button>
+                <button class="chip" :class="{active: galleryFilter.kind==='variant'}" @click="galleryFilter.kind='variant'">Variantes</button>
+                <button class="chip" :class="{active: galleryFilter.kind==='inpaint'}" @click="galleryFilter.kind==='inpaint'">Inpaints</button>
+              </div>
+              <input type="search" class="gallery-search" placeholder="Buscar etiqueta, expresión…" x-model="galleryFilter.search">
+              <select class="gallery-sort" x-model="gallerySort">
+                <option value="recent">Más recientes</option>
+                <option value="old">Más antiguas</option>
+                <option value="character">Por personaje</option>
+              </select>
+              <button class="btn btn-sm" @click="ensureGallery(true)">Refrescar</button>
+            </div>
+          </div>
+          <p class="muted" x-show="galleryLoading">Cargando…</p>
+          <div class="gallery-grid">
+            <template x-for="g in galleryFiltered()" :key="g.kind+g.id">
+              <div class="gallery-tile" @click="openGalleryItem(g)">
+                <img :src="g.image_path" loading="lazy">
+                <span class="gallery-badge" x-text="g.kind"></span>
+                <div class="gallery-caption">
+                  <b x-text="g.character"></b>
+                  <span class="muted small ellipsis" x-text="g.title"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+          <p class="muted" x-show="!galleryLoading && !galleryFiltered().length">No hay imágenes generadas todavía.</p>
+        </section>
+
+        <!-- ============ FRAMINGS / ACCESORIOS ============ -->
+        <section x-show="view==='framings' || view==='accessories'">
+          <div class="view-header">
+            <h2 x-text="view==='framings' ? 'Framings' : 'Accesorios'"></h2>
+            <button class="btn btn-primary" @click="addCollectionItem(view)">+ Nuevo</button>
+          </div>
+          <table class="coll-table">
+            <thead><tr><th style="width:170px">Clave</th><th>Positivo</th><th>Negativo</th><th style="width:150px"></th></tr></thead>
+            <tbody>
+              <template x-for="row in (view==='framings' ? framings : accessories)" :key="(view)+row._key">
+                <tr>
+                  <td><input x-model="row._key" :disabled="!row._isNew"></td>
+                  <td><textarea x-model="row.positive" rows="3" @input="row._dirty=true"></textarea></td>
+                  <td><textarea x-model="row.negative" rows="3" @input="row._dirty=true"></textarea></td>
+                  <td>
+                    <button class="btn btn-sm btn-primary" @click="saveCollectionItem(view, row)" x-text="row._isNew ? 'Crear' : 'Guardar'"></button>
+                    <button class="btn btn-danger btn-sm" x-show="!row._isNew" @click="confirmDeleteCollection(row)">×</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ============ GLOBALES ============ -->
+        <section x-show="view==='globals'">
+          <h2>Prompts globales</h2>
+          <p class="muted">Se anteponen (positivo) y agregan (negativo) a TODA generación. Tip: acá van calidad y negativos genéricos; nunca ropa.</p>
+          <label>Global positivo <textarea x-model="globals.positive" rows="3"></textarea></label>
+          <label>Global negativo <textarea x-model="globals.negative" rows="4"></textarea></label>
+          <button class="btn btn-primary" @click="saveGlobals()">Guardar globales</button>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <template x-if="detail">
+    <div>
+      <datalist id="sug-expressions"><template x-for="s in detail.suggestions.expressions"><option :value="s"></option></template></datalist>
+      <datalist id="sug-clothing"><template x-for="s in detail.suggestions.clothing"><option :value="s"></option></template></datalist>
+      <datalist id="sug-labels"><template x-for="s in detail.suggestions.labels"><option :value="s"></option></template></datalist>
+      <datalist id="sug-negatives"><template x-for="s in detail.suggestions.negatives"><option :value="s"></option></template></datalist>
+    </div>
+  </template>
+
+  <!-- ============ MODAL: personaje nuevo ============ -->
+  <div class="modal-backdrop" x-show="charModal" x-cloak>
+    <div class="modal" x-show="charModal" x-transition.opacity role="dialog" aria-modal="true" aria-label="Nuevo personaje">
+      <template x-if="charModal">
+        <div x-init="focusModal($el)">
+      <h3 x-text="'Nuevo personaje'"></h3>
+      <label>Clave (minúsculas, dígitos o _) <input x-model="charModal.key" @input="charModal.key = charModal.key.toLowerCase().replace(/[^a-z0-9_]/g,'')" placeholder="ej: lucia"></label>
+      <div class="editor-grid">
+        <label>Lighting <input x-model="charModal.lighting" value="soft natural light"></label>
+        <label>Body <input x-model="charModal.body"></label>
+        <label class="full">Identity <textarea x-model="charModal.identity" rows="2" placeholder="1girl, young woman, early 20s, pale skin, slim build, oval face"></textarea></label>
+        <label class="full">Face <textarea x-model="charModal.face" rows="2"></textarea></label>
+        <label class="full">Hair <textarea x-model="charModal.hair" rows="1"></textarea></label>
+        <label class="full">Negative identity (solo rasgos) <textarea x-model="charModal.negative_identity" rows="2"></textarea></label>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" @click="createCharacter()">Crear</button>
+        <button class="btn" @click="charModal=null">Cancelar</button>
+      </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: base ============ -->
+  <div class="modal-backdrop" x-show="baseModal" x-cloak>
+    <div class="modal modal-wide" x-show="baseModal" x-transition.opacity role="dialog" aria-modal="true" aria-label="Base">
+      <template x-if="baseModal">
+        <div x-init="focusModal($el)">
+          <h3 x-text="baseModal.draft.baseId ? `Base ${baseModal.draft.baseId}` : 'Nueva base'"></h3>
+          <div class="modal-cols">
+            <div>
+              <label>Ropa / vestimenta (positivo)
+                <textarea x-model="baseModal.draft.clothing" rows="2" @input="schedulePreview()" placeholder="ej: shirtless, bare chest / 1piece swimsuit, white"></textarea></label>
+              <label>Negativo extra (contrario de la ropa elegida)
+                <textarea x-model="baseModal.draft.negativeExtra" rows="2" list="sug-negatives" @input="schedulePreview()" placeholder="ej: fully clothed, shirt on"></textarea></label>
+              <label>Framing
+                <select x-model="baseModal.draft.framingKey" @change="schedulePreview()" x-init="$nextTick(() => { $el.value = baseModal.draft.framingKey; })">
+                  <template x-for="f in framings"><option :value="f._key" x-text="f._key"></option></template>
+                </select></label>
+              <fieldset>
+                <legend>Ajustes</legend>
+                <div class="gen-settings">
+                  <label>Steps <input type="number" x-model.number="baseModal.draft.steps" min="1" max="150"></label>
+                  <label>CFG <input type="number" step="0.1" x-model.number="baseModal.draft.cfg"></label>
+                  <label>Sampler <select x-model="baseModal.draft.sampler" x-init="$nextTick(() => { $el.value = baseModal.draft.sampler; })">
+                    <template x-for="s in samplers"><option :value="s" x-text="s"></option></template>
+                  </select></label>
+                  <label>Schedule <select x-model="baseModal.draft.schedule" x-init="$nextTick(() => { $el.value = baseModal.draft.schedule; })"><template x-for="s in schedules"><option :value="s" x-text="s"></option></template></select></label>
+                  <label class="full">Modelo <select x-model="baseModal.draft.model" x-init="$nextTick(() => { $el.value = baseModal.draft.model; })"><template x-for="m in models"><option :value="m" x-text="m"></option></template></select></label>
+                  <label class="check"><input type="checkbox" x-model="baseModal.draft.seedAuto"> Seed aleatorio</label>
+                  <label>Seed <input type="number" x-model="baseModal.draft.seed" :readonly="baseModal.draft.seedAuto"></label>
+                  <label class="check full"><input type="checkbox" x-model="baseModal.draft.rembg" :disabled="!config.rembg.available"> Quitar fondo (rembg)</label>
+                  <p class="muted small full" x-show="!config.rembg.available" style="margin-top:-6px">rembg no está disponible, no se puede quitar el fondo. Ejecutá <code>bash scripts/setup-rembg.sh</code> o fijá <code>REMBG_BIN</code> en <code>.env</code> y reiniciá el server.</p>
+                </div>
+              </fieldset>
+            </div>
+            <div class="preview-col">
+              <div class="preview-box">
+                <h4>Prompt positivo</h4>
+                <p x-text="baseModal.preview.positive || '…'"></p>
+                <h4>Prompt negativo</h4>
+                <p x-text="baseModal.preview.negative || '…'"></p>
+                <div class="conflicts" x-show="baseModal.conflicts.length">
+                  <b>⚠ Conflictos positivo↔negativo:</b> <span x-text="baseModal.conflicts.join(' · ')"></span>
+                </div>
+              </div>
+              <div class="btn-row">
+                <button class="btn btn-primary" :disabled="baseModal.busy" @click="generateBase()"
+                        x-text="baseModal.draft.baseId && baseModal.progress.outputPath ? 'Regenerar' : 'Generar'"></button>
+                <button class="btn" x-show="baseModal.draft.baseId" :disabled="baseModal.busy" @click="saveBaseChanges()">Guardar cambios</button>
+                <button class="btn btn-danger" x-show="baseModal.busy" @click="cancelJob(baseModal)">Detener</button>
+              </div>
+              <template x-if="baseModal.progress.status">
+                <div class="progress">
+                  <div class="stage"><span x-text="baseModal.progress.stage || baseModal.progress.status"></span><span x-text="`${baseModal.progress.percent}% (${baseModal.progress.currentStep}/${baseModal.progress.totalSteps})`"></span></div>
+                  <div class="bar"><div class="bar-fill" :style="`width:${baseModal.progress.percent}%`"></div></div>
+                  <div class="error" x-show="baseModal.progress.error" x-text="baseModal.progress.error"></div>
+                </div>
+              </template>
+              <div class="result-img" x-show="baseModal.progress.outputPath">
+                <img :src="baseModal.progress.outputPath + '?t=' + (baseModal.progress.stamp || 0)" @click="openLightbox(baseModal.progress.outputPath)" title="Ver en tamaño original">
+              </div>
+            </div>
+          </div>
+          <div class="btn-row"><button class="btn" @click="closeBaseModal()">Cerrar</button></div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: variante ============ -->
+  <div class="modal-backdrop" x-show="variantModal" x-cloak>
+    <div class="modal modal-wide" x-show="variantModal" x-transition.opacity role="dialog" aria-modal="true" aria-label="Variante">
+      <template x-if="variantModal">
+        <div x-init="focusModal($el)">
+          <h3 x-text="variantModal.draft.variantId ? `Variante ${variantModal.draft.variantId}` : 'Nueva variante'"></h3>
+          <div class="modal-cols">
+            <div>
+              <label>Etiqueta <input x-model="variantModal.draft.label" list="sug-labels" placeholder="ej: happy_casual"></label>
+              <label>Base de referencia (identidad facial)
+                <select x-model.number="variantModal.draft.baseId" x-init="$nextTick(() => { $el.value = variantModal.draft.baseId; })">
+                  <template x-for="b in (detail?.bases || [])">
+                    <option :value="b.id" x-text="`base ${b.id} ${b.image_path ? '' : '(sin imagen aún)'} · ${(b.clothing || '').slice(0,30)}`"></option>
+                  </template>
+                </select></label>
+              <label>Expresión (positivo)
+                <textarea x-model="variantModal.draft.expression" rows="2" list="sug-expressions" @input="schedulePreview()"></textarea></label>
+              <label>Ropa (positivo)
+                <textarea x-model="variantModal.draft.clothing" rows="2" list="sug-clothing" @input="schedulePreview()"></textarea></label>
+              <label>Negativo extra
+                <textarea x-model="variantModal.draft.negativeExtra" rows="2" list="sug-negatives" @input="schedulePreview()" placeholder="ej: exposed skin, bare chest (contrario de la ropa elegida)"></textarea></label>
+              <label>Accesorios</label>
+              <div class="acc-grid">
+                <template x-for="a in accessories">
+                  <label class="check"><input type="checkbox" :value="a._key" x-model="variantModal.draft.accessories" @change="schedulePreview()"> <span x-text="a._key"></span></label>
+                </template>
+              </div>
+              <div class="gen-settings">
+                <label>Framing
+                  <select x-model="variantModal.draft.framingKey" @change="schedulePreview()" x-init="$nextTick(() => { $el.value = variantModal.draft.framingKey; })">
+                    <template x-for="f in framings"><option :value="f._key" x-text="f._key"></option></template>
+                  </select></label>
+                <label>Tamaño <select x-model="variantModal.draft.size">
+                  <option value="832x1216">832x1216</option><option value="1024x1024">1024x1024</option>
+                  <option value="896x1152">896x1152</option><option value="768x1344">768x1344</option>
+                  <option value="640x1536">640x1536</option><option value="1216x832">1216x832</option>
+                </select></label>
+                <label>Consistencia facial
+                  <select x-model="variantModal.draft.method" @change="onMethodChange()">
+                    <option value="none">sin referencia (solo prompt)</option>
+                    <option value="photomaker" :disabled="!config.identityMethods.photomaker">PhotoMaker (cara de la base)</option>
+                    <option value="ipadapter" :disabled="!config.identityMethods.ipadapter">IP-Adapter (cara de la base)</option>
+                  </select></label>
+                <label x-show="variantModal.draft.method !== 'none'">Strength
+                  <input type="number" x-model.number="variantModal.draft.strength"
+                    :step="variantModal.draft.method === 'ipadapter' ? 0.05 : 1"
+                    :min="variantModal.draft.method === 'ipadapter' ? 0.05 : 1"
+                    :max="variantModal.draft.method === 'ipadapter' ? 1 : 100">
+                </label>
+                <p class="muted small full" x-show="variantModal.draft.method === 'ipadapter'">IP-Adapter: obligatorio, mayor que 0 y hasta 1, en pasos de 0.05.</p>
+                <p class="muted small full" x-show="variantModal.draft.method === 'photomaker'">PhotoMaker: obligatorio, mayor que 0 y hasta 100, en pasos de 1.</p>
+              </div>
+              <fieldset>
+                <legend>Ajustes</legend>
+                <div class="gen-settings">
+                  <label>Steps <input type="number" x-model.number="variantModal.draft.steps" min="1" max="150"></label>
+                  <label>CFG <input type="number" step="0.1" x-model.number="variantModal.draft.cfg"></label>
+                  <label>Sampler <select x-model="variantModal.draft.sampler" x-init="$nextTick(() => { $el.value = variantModal.draft.sampler; })">
+                    <template x-for="s in samplers"><option :value="s" x-text="s"></option></template>
+                  </select></label>
+                  <label>Schedule <select x-model="variantModal.draft.schedule" x-init="$nextTick(() => { $el.value = variantModal.draft.schedule; })"><template x-for="s in schedules"><option :value="s" x-text="s"></option></template></select></label>
+                  <label class="full">Modelo <select x-model="variantModal.draft.model" x-init="$nextTick(() => { $el.value = variantModal.draft.model; })"><template x-for="m in models"><option :value="m" x-text="m"></option></template></select></label>
+                  <label class="check"><input type="checkbox" x-model="variantModal.draft.seedAuto"> Seed automático (derivado de la ropa)</label>
+                  <label>Seed <input type="number" x-model="variantModal.draft.seed" :readonly="variantModal.draft.seedAuto"></label>
+                  <label class="check full"><input type="checkbox" x-model="variantModal.draft.rembg" :disabled="!config.rembg.available"> Quitar fondo (rembg)</label>
+                  <p class="muted small full" x-show="!config.rembg.available" style="margin-top:-6px">rembg no está disponible, no se puede quitar el fondo. Ejecutá <code>bash scripts/setup-rembg.sh</code> o fijá <code>REMBG_BIN</code> en <code>.env</code> y reiniciá el server.</p>
+                </div>
+              </fieldset>
+            </div>
+            <div class="preview-col">
+              <div class="preview-box">
+                <h4>Prompt positivo</h4>
+                <p x-text="variantModal.preview.positive || '…'"></p>
+                <h4>Prompt negativo</h4>
+                <p x-text="variantModal.preview.negative || '…'"></p>
+                <div class="conflicts" x-show="variantModal.conflicts.length">
+                  <b>⚠ Conflictos positivo↔negativo:</b> <span x-text="variantModal.conflicts.join(' · ')"></span>
+                </div>
+              </div>
+              <div class="btn-row">
+                <button class="btn btn-primary" :disabled="variantModal.busy" @click="generateVariant()"
+                        x-text="variantModal.draft.variantId && variantModal.progress.outputPath ? 'Regenerar' : 'Generar'"></button>
+                <button class="btn" x-show="variantModal.draft.variantId" :disabled="variantModal.busy" @click="saveVariantChanges()">Guardar cambios</button>
+                <button class="btn btn-danger" x-show="variantModal.busy" @click="cancelJob(variantModal)">Detener</button>
+              </div>
+              <template x-if="variantModal.progress.status">
+                <div class="progress">
+                  <div class="stage"><span x-text="variantModal.progress.stage || variantModal.progress.status"></span><span x-text="`${variantModal.progress.percent}% (${variantModal.progress.currentStep}/${variantModal.progress.totalSteps})`"></span></div>
+                  <div class="bar"><div class="bar-fill" :style="`width:${variantModal.progress.percent}%`"></div></div>
+                  <div class="error" x-show="variantModal.progress.error" x-text="variantModal.progress.error"></div>
+                </div>
+              </template>
+              <div class="result-img" x-show="variantModal.progress.outputPath">
+                <img :src="variantModal.progress.outputPath + '?t=' + (variantModal.progress.stamp || 0)" @click="openLightbox(variantModal.progress.outputPath)" title="Ver en tamaño original">
+              </div>
+            </div>
+          </div>
+          <div class="btn-row"><button class="btn" @click="closeVariantModal()">Cerrar</button></div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: inpaint ============ -->
+  <div class="modal-backdrop" x-show="inpaintModal" x-cloak>
+    <div class="modal modal-wide" x-show="inpaintModal" x-transition.opacity role="dialog" aria-modal="true" aria-label="Inpaint">
+      <template x-if="inpaintModal">
+        <div x-init="focusModal($el)">
+          <h3 x-text="`Inpintar cara — variante ${inpaintModal.source.label || inpaintModal.source.id}`"></h3>
+          <p class="muted small" x-show="inpaintModal.editingId">
+            Editando un inpaint existente. "Guardar cambios" actualiza su configuración; "Generar inpaint" crea una imagen nueva sin pisar la anterior.
+          </p>
+          <div class="modal-cols">
+            <div>
+              <label>Región
+                <select x-model="inpaintModal.draft.region" x-init="$nextTick(() => { $el.value = inpaintModal.draft.region; })">
+                  <template x-for="r in (config?.inpaint?.regions || [])"><option :value="r.key" :disabled="!r.available" x-text="r.label"></option></template>
+                </select></label>
+              <label>Identificador
+                <input x-model="inpaintModal.draft.label" placeholder="ej: sonrisa">
+              </label>
+              <p class="muted small">Se guardará como <b x-text="`${inpaintModal.source.label || 'variante'}_${inpaintModal.draft.label || '…'}`"></b></p>
+              <label>Prompt de la nueva expresión
+                <textarea x-model="inpaintModal.draft.prompt" rows="2" placeholder="ej: smiling, eyes slightly squinted, cheerful expression"></textarea></label>
+              <label>Negativo (opcional)
+                <textarea x-model="inpaintModal.draft.negative" rows="1"></textarea></label>
+              <label>Intensidad del cambio: <b x-text="inpaintModal.draft.denoise"></b>
+                <input type="range" min="0.05" max="0.95" step="0.05" x-model.number="inpaintModal.draft.denoise"></label>
+
+              <fieldset>
+                <legend>Anclaje de identidad</legend>
+                <label>Modo
+                  <select x-model="inpaintModal.draft.identityMode" @change="onInpaintIdentityModeChange()"
+                    x-init="$nextTick(() => { $el.value = inpaintModal.draft.identityMode; })">
+                    <option value="none">Ninguno (libre, puede divergir de la cara original)</option>
+                    <option value="prompt">Prompt de identidad (identity/face/hair del personaje)</option>
+                    <option value="photomaker" :disabled="!config.identityMethods.photomaker">PhotoMaker (referencia de la base)</option>
+                    <option value="ipadapter" :disabled="!config.identityMethods.ipadapter">IP-Adapter (referencia de la base)</option>
+                  </select>
+                </label>
+                <p class="muted small" x-show="inpaintModal.draft.identityMode === 'prompt'">
+                  Antepone identity/face/hair del personaje al prompt de la región — no requiere modelos extra.
+                </p>
+                <div class="preview-box" x-show="inpaintModal.draft.identityMode === 'prompt' && inpaintFinalPrompt()"
+                     style="margin-top: 8px;">
+                  <h4>Prompt final enviado a la región (identidad + lo escrito)</h4>
+                  <p x-text="inpaintFinalPrompt()?.positive || '…'"></p>
+                  <template x-if="inpaintFinalPrompt()?.negative">
+                    <div>
+                      <h4>Negativo final</h4>
+                      <p x-text="inpaintFinalPrompt()?.negative"></p>
+                    </div>
+                  </template>
+                </div>
+                <p class="muted small" x-show="(inpaintModal.draft.identityMode === 'photomaker' || inpaintModal.draft.identityMode === 'ipadapter') && !inpaintModal.source.base_id">
+                  Esta variante no tiene base asociada — no se puede generar la referencia facial.
+                </p>
+                <label x-show="inpaintModal.draft.identityMode === 'photomaker' || inpaintModal.draft.identityMode === 'ipadapter'">
+                  Strength <b x-text="inpaintModal.draft.identityStrength"></b>
+                  <input type="range"
+                    :min="inpaintModal.draft.identityMode === 'ipadapter' ? 0.05 : 5"
+                    :max="inpaintModal.draft.identityMode === 'ipadapter' ? 1 : 100"
+                    :step="inpaintModal.draft.identityMode === 'ipadapter' ? 0.05 : 5"
+                    x-model.number="inpaintModal.draft.identityStrength">
+                </label>
+                <p class="muted small" x-show="!config.identityMethods.photomaker && !config.identityMethods.ipadapter">
+                  PhotoMaker/IP-Adapter no están configurados (SD_PHOTOMAKER_PATH / SD_IP_ADAPTER_PATH + SD_CLIP_VISION_PATH + SD_AD_FACE_MODEL en <code>.env</code>).
+                </p>
+              </fieldset>
+
+              <label class="check"><input type="checkbox" x-model="inpaintModal.draft.seedAuto"> Seed automático (derivado del identificador)</label>
+              <label>Seed <input type="number" x-model="inpaintModal.draft.seed" :readonly="inpaintModal.draft.seedAuto"></label>
+              <label class="check"><input type="checkbox" x-model="inpaintModal.draft.rembg" :disabled="!config.rembg.available"> Quitar fondo (rembg)</label>
+              <p class="muted small" x-show="!config.rembg.available">rembg no está disponible. Ejecutá <code>bash scripts/setup-rembg.sh</code> o fijá <code>REMBG_BIN</code> en <code>.env</code> y reiniciá el server.</p>
+            </div>
+            <div class="preview-col">
+              <div class="btn-row">
+                <button class="btn btn-primary" :disabled="inpaintModal.busy" @click="runInpaint()">Generar inpaint</button>
+                <button class="btn" x-show="inpaintModal.editingId" :disabled="inpaintModal.busy" @click="saveInpaintChanges()">Guardar cambios</button>
+                <button class="btn btn-danger" x-show="inpaintModal.busy" @click="cancelJob(inpaintModal)">Detener</button>
+              </div>
+              <template x-if="inpaintModal.progress.status">
+                <div class="progress">
+                  <div class="stage"><span x-text="inpaintModal.progress.stage || inpaintModal.progress.status"></span><span x-text="`${inpaintModal.progress.percent}% (${inpaintModal.progress.currentStep}/${inpaintModal.progress.totalSteps})`"></span></div>
+                  <div class="bar"><div class="bar-fill" :style="`width:${inpaintModal.progress.percent}%`"></div></div>
+                  <div class="error" x-show="inpaintModal.progress.error" x-text="inpaintModal.progress.error"></div>
+                  <div class="error" x-show="inpaintModal.progress.note" x-text="inpaintModal.progress.note"></div>
+                </div>
+              </template>
+              <div class="result-img" x-show="inpaintModal.progress.outputPath">
+                <img :src="inpaintModal.progress.outputPath + '?t=' + (inpaintModal.progress.stamp || 0)" @click="openLightbox(inpaintModal.progress.outputPath)" title="Ver en tamaño original">
+              </div>
+            </div>
+          </div>
+          <div class="btn-row"><button class="btn" @click="closeInpaintModal()">Cerrar</button></div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: galería ============ -->
+  <div class="modal-backdrop" x-show="galleryModal" x-cloak @click.self="closeGalleryModal()">
+    <div class="modal modal-wide" x-show="galleryModal" x-transition.opacity>
+      <template x-if="galleryModal">
+        <div>
+          <div class="view-header">
+            <h3>
+              <span x-text="galleryModal.item.character"></span>
+              <span class="muted small" x-text="`· ${galleryModal.item.kind} ${galleryModal.item.id} · ${galleryModal.item.title}`"></span>
+            </h3>
+            <div class="btn-row">
+              <a class="btn btn-sm" :href="galleryModal.item.image_path" :download="galleryDownloadName(galleryModal.item)">Descargar</a>
+              <button class="btn btn-sm" @click="closeGalleryModal()">Cerrar</button>
+            </div>
+          </div>
+          <div class="gallery-modal-cols">
+            <div class="gallery-compare">
+              <figure>
+                <img
+                  :src="galleryModal.showOriginal && galleryModal.item.origin ? galleryModal.item.origin.image_path : galleryModal.item.image_path"
+                  loading="lazy"
+                  @click="openLightbox(galleryModal.showOriginal && galleryModal.item.origin ? galleryModal.item.origin.image_path : galleryModal.item.image_path)">
+                <figcaption x-text="galleryModal.showOriginal && galleryModal.item.origin ? `origen: ${galleryModal.item.origin.title}` : (galleryModal.item.origin ? 'imagen generada' : '')"></figcaption>
+              </figure>
+              <button
+                class="gallery-compare-btn next"
+                x-show="galleryModal.item.origin && !galleryModal.showOriginal"
+                title="Ver la imagen original"
+                @click="galleryModal.showOriginal = true">❯</button>
+              <button
+                class="gallery-compare-btn prev"
+                x-show="galleryModal.item.origin && galleryModal.showOriginal"
+                title="Volver a la imagen generada"
+                @click="galleryModal.showOriginal = false">❮</button>
+            </div>
+            <div class="preview-box gallery-props">
+              <p class="muted small" x-show="galleryModal.loading">Cargando prompt…</p>
+              <div x-show="!galleryModal.loading">
+                <h4>Prompt positivo</h4>
+                <p x-text="galleryModal.item.prompts?.positive || '—'"></p>
+                <h4>Prompt negativo</h4>
+                <p x-text="galleryModal.item.prompts?.negative || '—'"></p>
+                <template x-if="galleryModal.item.kind === 'inpaint'">
+                  <div>
+                    <h4>Prompt original del formulario</h4>
+                    <p x-text="galleryModal.item.meta.prompt || '—'"></p>
+                    <h4>Prompt de escena (variante origen)</h4>
+                    <p x-text="galleryModal.item.scene?.positive || '—'"></p>
+                  </div>
+                </template>
+              </div>
+              <h4>Settings</h4>
+              <table class="prop-table">
+                <template x-for="row in galleryMetaRows(galleryModal.item)" :key="row[0]">
+                  <tr><td x-text="row[0]"></td><td x-text="row[1]"></td></tr>
+                </template>
+              </table>
+            </div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- ============ MODAL: confirmación ============ -->
+  <div class="modal-backdrop" x-show="confirmModal" x-cloak @click.self="confirmModal=null">
+    <div class="modal">
+      <h3 x-text="confirmModal?.title"></h3>
+      <p x-text="confirmModal?.message"></p>
+      <div class="btn-row">
+        <button class="btn btn-danger" @click="runConfirm()">Confirmar</button>
+        <button class="btn" @click="confirmModal=null">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ JOBS ACTIVOS (bandeja flotante) ============ -->
+  <div id="active-jobs" x-show="activeJobs.length || finishedJobs.length" x-cloak>
+    <div class="jobs-head">
+      <b>Trabajos</b>
+      <button class="job-chip-cancel" x-show="finishedJobs.length" @click="finishedJobs = []" title="Limpiar historial">Limpiar</button>
+    </div>
+    <template x-for="job in activeJobs" :key="job.jobId">
+      <div class="job-chip">
+        <div class="job-chip-head">
+          <span class="job-chip-label" x-text="job.label"></span>
+          <button class="job-chip-cancel" @click="cancelActiveJob(job)" title="Detener">×</button>
+        </div>
+        <div class="job-chip-stage">
+          <span x-text="job.status === 'pending' ? (job.queuePosition ? 'en cola #' + job.queuePosition : 'en cola') : (job.stage || job.status)"></span>
+          <span x-text="`${job.percent ?? 0}%`"></span>
+        </div>
+        <div class="bar"><div class="bar-fill" :style="`width:${job.percent || 0}%`"></div></div>
+        <div class="job-chip-error" x-show="job.error" x-text="job.error"></div>
+      </div>
+    </template>
+    <template x-for="job in finishedJobs" :key="'f'+job.jobId">
+      <div class="job-chip" :class="job.status === 'done' ? 'is-done' : 'is-failed'">
+        <div class="job-chip-head">
+          <span class="job-chip-label" x-text="job.label"></span>
+          <button class="job-chip-cancel" @click="finishedJobs = finishedJobs.filter(j => j.jobId !== job.jobId)" title="Quitar">×</button>
+        </div>
+        <div class="job-chip-stage" x-text="job.status === 'done' ? 'terminado' : (job.status === 'cancelled' ? 'cancelado' : 'error')"></div>
+      </div>
+    </template>
+  </div>
+
+  <div id="toast" x-show="toastMsg" x-cloak :class="toastKind" role="status" aria-live="polite" x-text="toastMsg" @click="toastMsg=''"></div>
+
+  <!-- ============ LIGHTBOX (imagen original) ============ -->
+  <div class="lightbox" x-show="lightbox" x-cloak @click="lightbox = null" title="Clic o Esc para cerrar">
+    <img :src="lightbox" @click.stop @load="lightboxDims = $el.naturalWidth + '×' + $el.naturalHeight">
+    <p class="muted small" style="position:fixed;top:10px;right:16px;color:#ddd" x-text="lightboxDims" x-show="lightboxDims"></p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
