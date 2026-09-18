@@ -60,6 +60,11 @@ If you have your own characters and don't want to publish them, put them in
 `character_data.js` both on startup and in `bun run seed`. See
 `loadCharacterData()` in `seed.js`.
 
+From a character's view you can download a **bundle `.zip`** with every generated
+image: `{name}_base.png`, `{name}_{variant}.png` and
+`{name}_{variant}_{inpaint}.png`. If two files end up with the same name, the most
+recent one wins.
+
 ## Architecture
 
 ```
@@ -103,26 +108,27 @@ region text as `--ad-prompt`; with the `prompt` anchor it prepends the character
 
 ### API
 
-| Endpoint                                                                          | Method              | Description                                                                                             |
-| --------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------- |
-| `/api/characters[/:key]`                                                          | GET/POST/PUT/DELETE | character CRUD (delete also removes its image folder)                                                   |
-| `/api/bases?character=` · `/api/variants?character=` · `/api/inpaints?character=` | GET                 | lists for a character                                                                                   |
-| `/api/bases/:id/clone` · `/api/variants/:id/clone`                                | POST                | duplicate row + image with a new id                                                                     |
-| `/api/bases/:id` · `/api/variants/:id`                                            | PUT/DELETE          | edit data / delete row + file + stages                                                                  |
-| `/api/inpaints/:id`                                                               | PUT/DELETE          | edit config / delete inpaint + file + stages                                                            |
-| `/api/suggestions?character=`                                                     | GET                 | previously used values (modal datalists)                                                                |
-| `/api/preview`                                                                    | POST                | positive/negative + conflicts for a _draft_ (modal calls it debounced)                                  |
-| `/api/framings[/:key]` · `/api/accessories[/:key]`                                | GET/POST/PUT/DELETE | collection CRUD                                                                                         |
-| `/api/globals`                                                                    | PUT                 | global prompt segments                                                                                  |
-| `/api/prompt-data`                                                                | GET/PUT             | full JSON export / import (import cleans orphan images)                                                 |
-| `/api/gallery`                                                                    | GET                 | metadata for every image (no prompts)                                                                   |
-| `/api/gallery/:kind/:id`                                                          | GET                 | resolved prompt for one image (`base`\|`variant`\|`inpaint`)                                            |
-| `/api/generate-base`                                                              | POST                | `{character, baseId?, clothing, ...}` → job                                                             |
-| `/api/generate-variant`                                                           | POST                | `{character, baseId, variantId?, expression, clothing, accessories, framingKey, method, strength, ...}` |
-| `/api/inpaint-variant`                                                            | POST                | `{variantId, label, region, prompt, negative, denoise, identityMode, ...}` → job                        |
-| `/api/jobs`                                                                       | GET                 | active/queued jobs (to rehydrate tracking after a refresh)                                              |
-| `/api/generate/:id/stream` · `/cancel` · `/:id`                                   | GET/POST            | SSE (includes `queuePosition`), cancel, status                                                          |
-| `/api/config` · `/api/models`                                                     | GET                 | environment + available checkpoints                                                                     |
+| Endpoint                                                                          | Method              | Description                                                                                                     |
+| --------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `/api/characters[/:key]`                                                          | GET/POST/PUT/DELETE | character CRUD (delete also removes its image folder)                                                           |
+| `/api/characters/:key/bundle`                                                     | GET                 | `.zip` with every generated image (`{name}_base.png`, `{name}_{variant}.png`, `{name}_{variant}_{inpaint}.png`) |
+| `/api/bases?character=` · `/api/variants?character=` · `/api/inpaints?character=` | GET                 | lists for a character                                                                                           |
+| `/api/bases/:id/clone` · `/api/variants/:id/clone`                                | POST                | duplicate row + image with a new id                                                                             |
+| `/api/bases/:id` · `/api/variants/:id`                                            | PUT/DELETE          | edit data / delete row + file + stages                                                                          |
+| `/api/inpaints/:id`                                                               | PUT/DELETE          | edit config / delete inpaint + file + stages                                                                    |
+| `/api/suggestions?character=`                                                     | GET                 | previously used values (modal datalists)                                                                        |
+| `/api/preview`                                                                    | POST                | positive/negative + conflicts for a _draft_ (modal calls it debounced)                                          |
+| `/api/framings[/:key]` · `/api/accessories[/:key]`                                | GET/POST/PUT/DELETE | collection CRUD                                                                                                 |
+| `/api/globals`                                                                    | PUT                 | global prompt segments                                                                                          |
+| `/api/prompt-data`                                                                | GET/PUT             | full JSON export / import (import cleans orphan images)                                                         |
+| `/api/gallery`                                                                    | GET                 | metadata for every image (no prompts)                                                                           |
+| `/api/gallery/:kind/:id`                                                          | GET                 | resolved prompt for one image (`base`\|`variant`\|`inpaint`)                                                    |
+| `/api/generate-base`                                                              | POST                | `{character, baseId?, clothing, ...}` → job                                                                     |
+| `/api/generate-variant`                                                           | POST                | `{character, baseId, variantId?, expression, clothing, accessories, framingKey, method, strength, ...}`         |
+| `/api/inpaint-variant`                                                            | POST                | `{variantId, label, region, prompt, negative, denoise, identityMode, ...}` → job                                |
+| `/api/jobs`                                                                       | GET                 | active/queued jobs (to rehydrate tracking after a refresh)                                                      |
+| `/api/generate/:id/stream` · `/cancel` · `/:id`                                   | GET/POST            | SSE (includes `queuePosition`), cancel, status                                                                  |
+| `/api/config` · `/api/models`                                                     | GET                 | environment + available checkpoints                                                                             |
 
 ### Generation
 

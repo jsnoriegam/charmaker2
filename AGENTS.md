@@ -24,7 +24,7 @@ CharMaker2: SPA + servidor Express que genera personajes de visual novels vía `
 ## Estructura
 
 - `server.js` — entrypoint Express; monta routers de `server/routes/`.
-- `server/` — `config.js` (todas las vars de entorno se leen ahí vía dotenv), `prompts.js` (armado de capas positivo/negativo), `sdcli.js` (construcción de argv para sd-cli), `jobs.js` (cola), `pipeline/{base,variant,inpaint}.js`, `rembg.js`.
+- `server/` — `config.js` (todas las vars de entorno se leen ahí vía dotenv), `prompts.js` (armado de capas positivo/negativo), `sdcli.js` (construcción de argv para sd-cli), `jobs.js` (cola), `pipeline/{base,variant,inpaint}.js`, `rembg.js`, `zip.js`/`bundle.js` (bundle `.zip` de un personaje).
 - `public/app.js` + `index.html` — SPA Alpine.js (vendor en `public/vendor/`); el modal llama a `/api/preview` debounced para mostrar positivo/negativo y conflictos.
 - El negocio del prompt vive en `server/prompts.js`; duplicar lógica de capas en otro lado rompe la preview.
 

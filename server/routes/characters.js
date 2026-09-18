@@ -3,15 +3,47 @@ import { existsSync, readdirSync, renameSync } from 'fs';
 import { join } from 'path';
 import {
   getCharacterRow, saveCharacter, deleteCharacter, listCharacters,
-  renameCharacterImagePaths, KEY_PATTERN,
+  renameCharacterImagePaths, listBases, listVariants, listInpaints, KEY_PATTERN,
 } from '../../db.js';
-import { OUTPUT_DIR } from '../config.js';
+import { OUTPUT_DIR, PROJECT_ROOT } from '../config.js';
 import { httpError, crud, cleanupOrphanImages } from '../util.js';
 import { invalidatePromptData } from '../prompts.js';
+import { buildBundleEntries, sanitizeName } from '../bundle.js';
+import { streamZip } from '../zip.js';
 
 const router = Router();
 
 router.get('/', crud(() => listCharacters()));
+
+// Descarga todas las imágenes generadas del personaje en un .zip.
+router.get('/:key/bundle', (req, res) => {
+  const char = getCharacterRow(req.params.key);
+  if (!char) return res.status(404).json({ error: 'Personaje no encontrado' });
+
+  const key = char.key;
+  const withFile = (row) => row.image_path && existsSync(join(PROJECT_ROOT, row.image_path));
+  const variants = listVariants(key);
+  const bases = listBases(key).filter(withFile);
+  const variantsWithImage = variants.filter(withFile);
+  const inpaints = listInpaints(key).filter(withFile);
+
+  if (!bases.length && !variantsWithImage.length && !inpaints.length) {
+    return res.status(404).json({ error: 'El personaje no tiene imágenes generadas.' });
+  }
+
+  const variantLabels = new Map(variants.map(v => [v.id, v.label]));
+  const entries = buildBundleEntries(key, {
+    bases, variants: variantsWithImage, inpaints, variantLabels,
+  }).map(({ name, item }) => ({ name, path: join(PROJECT_ROOT, item.image_path) }));
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="charmaker2_${sanitizeName(key)}.zip"`);
+  streamZip(res, entries).catch((err) => {
+    console.error('Error generando bundle:', err);
+    if (!res.headersSent) res.status(500).json({ error: err.message });
+    else res.destroy();
+  });
+});
 
 router.get('/:key', crud((req) => {
   const row = getCharacterRow(req.params.key);

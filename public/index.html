@@ -93,6 +93,9 @@
                   <button class="btn" :class="{ 'btn-primary': detail.bases.some(b=>b.image_path) }"
                           :disabled="!detail.bases.some(b=>b.image_path)"
                           @click="openVariantModal(null)">+ Generar variante</button>
+                  <a class="btn" :href="bundleUrl()"
+                     x-show="detail.bases.some(b=>b.image_path) || detail.variants.some(v=>v.image_path) || detail.inpaints.some(i=>i.image_path)"
+                     title="Descargar todas las imágenes generadas en un .zip">Descargar bundle (.zip)</a>
                   <button class="btn btn-danger" @click="confirmDelete('Personaje', `Eliminar ${detail.key} con sus ${detail.bases.length} bases y ${detail.variants.length} variantes (y sus imágenes).`, () => deleteCharacter())">Eliminar personaje</button>
                 </div>
               </div>

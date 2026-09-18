@@ -374,6 +374,11 @@ function app() {
       await this.openCharacter(this.detail.key);
     },
 
+    // URL del .zip con todas las imágenes generadas del personaje abierto.
+    bundleUrl() {
+      return this.detail ? `/api/characters/${encodeURIComponent(this.detail.key)}/bundle` : '#';
+    },
+
     openCharModal() {
       this.charModal = { key: '', identity: '', face: '', hair: '', body: '', lighting: 'soft natural light', negative_identity: '' };
     },
