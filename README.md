@@ -159,12 +159,12 @@ test with Bun and Node 22. The server shuts down gracefully on `SIGINT`/`SIGTERM
 
 ## Environment variables
 
-Same as charmaker 1 (`SD_BINARY`, `SD_MODEL_DIR`, `SD_DEFAULT_MODEL`, VAE, cache,
-`SD_AD_FACE_MODEL`, `SD_PHOTOMAKER_PATH`, `SD_IP_ADAPTER_PATH`,
-`SD_CLIP_VISION_PATH`…). New ones: `REMBG_BIN`, `REMBG_MODEL` (default
-`birefnet-general`), `SD_AD_FACE_STEPS` (2nd-pass steps; defaults to the row's
-steps), `SD_HISTORY_KEEP` and `SERVER_HOST`/`SERVER_PORT` (default
-`127.0.0.1:3002`; use `SERVER_HOST=0.0.0.0` to expose on the LAN). See
+The usual SDXL/stable-diffusion.cpp settings (`SD_BINARY`, `SD_MODEL_DIR`,
+`SD_DEFAULT_MODEL`, VAE, cache, `SD_AD_FACE_MODEL`, `SD_PHOTOMAKER_PATH`,
+`SD_IP_ADAPTER_PATH`, `SD_CLIP_VISION_PATH`…). Additional ones: `REMBG_BIN`,
+`REMBG_MODEL` (default `birefnet-general`), `SD_AD_FACE_STEPS` (2nd-pass steps;
+defaults to the row's steps), `SD_HISTORY_KEEP` and `SERVER_HOST`/`SERVER_PORT`
+(default `127.0.0.1:3002`; use `SERVER_HOST=0.0.0.0` to expose on the LAN). See
 `.env.example`.
 
 ## Security
