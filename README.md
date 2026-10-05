@@ -2,12 +2,28 @@
 
 **English** · [Español](README.es.md)
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-jsnoriegam-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/jsnoriegam)
+
 Web application to **generate visual novel characters** with stable-diffusion.cpp
 (`sd-cli`). It is not a generation form: it is a **character manager** where each
 character is built up, a **base** (facial reference) is generated, and its
 **variants** (expression + clothing + accessories + framing) branch off from it.
 **Inpaints** of regions (e.g. the face) can be run on a variant to fix or change
 the expression. All working data lives in **SQLite** and is edited from the UI.
+
+## Screenshots
+
+![CharMaker2 demo: character list, character detail, variant and inpaint modals](docs/screenshots/demo.gif)
+
+| Characters | Character detail |
+| :---: | :---: |
+| ![Character list](docs/screenshots/personajes.png) | ![Character detail with bases and variants](docs/screenshots/detalle-personaje.png) |
+
+| Variant modal with live prompt | Inpaint modal |
+| :---: | :---: |
+| ![Variant modal](docs/screenshots/modal-variante.png) | ![Inpaint modal](docs/screenshots/modal-inpaint.png) |
+
+> The UI is currently in Spanish; these screenshots show the same screens described below.
 
 ## Concepts
 
@@ -209,11 +225,8 @@ exposing it on the LAN is your responsibility.
 
 ## Support
 
-If CharMaker2 is useful to you, you can support its development:
-
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-jsnoriegam-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/jsnoriegam)
-
-Thanks!
+If CharMaker2 is useful to you, you can support its development on
+[Buy Me a Coffee](https://buymeacoffee.com/jsnoriegam). Thanks!
 
 ## License
 
