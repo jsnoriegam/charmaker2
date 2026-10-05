@@ -1,5 +1,5 @@
-import { mkdirSync, existsSync, readdirSync, renameSync, rmSync, copyFileSync } from 'fs';
-import { join } from 'path';
+import { mkdirSync, existsSync, readdirSync, renameSync, rmSync, copyFileSync, statSync } from 'fs';
+import { dirname, join } from 'path';
 import { OUTPUT_DIR, PROJECT_ROOT, HISTORY_KEEP } from './config.js';
 
 export function httpError(status, message) {
@@ -102,10 +102,35 @@ export function copyItemImage(item, kind, id) {
   if (!item.image_path) return null;
   const rel = `/generated/${item.character}/${kind === 'base' ? 'bases' : 'variants'}/${kind}_${id}.png`;
   const src = join(PROJECT_ROOT, item.image_path);
+  const dest = join(PROJECT_ROOT, rel);
   if (existsSync(src)) {
-    mkdirSync(join(src, '..'), { recursive: true });
-    copyFileSync(src, join(PROJECT_ROOT, rel));
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(src, dest);
     return rel;
   }
   return null;
+}
+
+// Purga los intermedios (_stages) más viejos que ttlMs. Están pensados para
+// reutilizarse como fuente en inpaints; con TTL se sacrifica eso por espacio.
+// ttlMs <= 0 lo deshabilita (default). Ver STAGES_TTL_HOURS en config.js.
+export function pruneStages(ttlMs) {
+  if (!(ttlMs > 0) || !existsSync(OUTPUT_DIR)) return 0;
+  const cutoff = Date.now() - ttlMs;
+  let removed = 0;
+  for (const entry of readdirSync(OUTPUT_DIR)) {
+    if (entry.startsWith('_')) continue;
+    const stages = join(OUTPUT_DIR, entry, '_stages');
+    if (!existsSync(stages)) continue;
+    for (const file of readdirSync(stages)) {
+      const full = join(stages, file);
+      try {
+        if (statSync(full).mtimeMs < cutoff) {
+          rmSync(full, { force: true });
+          removed++;
+        }
+      } catch { /* el archivo ya no está */ }
+    }
+  }
+  return removed;
 }

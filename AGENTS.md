@@ -19,7 +19,11 @@ CharMaker2: SPA + servidor Express que genera personajes de visual novels vía `
 - Los tests de `sdcli.test.js` / `jobs.test.js` no ejecutan `sd-cli` real; no se necesita GPU ni `.env` para `npm test`.
 - La cola de generación es FIFO exclusiva (una job a la vez); el progreso va por SSE parseando stdout de `sd-cli`.
 - Variante con consistencia facial = 2 pases (`img_gen` + adetailer/PhotoMaker); requiere `SD_AD_FACE_MODEL` configurada. `method: none` omite el segundo pase.
-- rembg es un venv de Python opcional: `bash scripts/setup-rembg.sh`. Resolución del binario: `REMBG_BIN` → `.venv/bin/rembg` → PATH.
+- rembg es un venv de Python opcional: `bash scripts/setup-rembg.sh` (instala y precarga BiRefNet-general). Resolución del binario: `REMBG_BIN` → `.venv/bin/rembg` → PATH.
+- Los inpaints se identifican por `(variant_id, label)` (label `[a-z0-9_-]+`, en minúsculas): `upsertInpaint()` en `db.js` **sobrescribe** al regenerar con el mismo label; renombrar a uno ya usado en la variante da 409.
+- Los modales de base/variante/inpaint marcan `dirty` vía `@input`/`@change` y piden confirmación al cerrar (Guardar/Descartar/Cancelar). El server persiste los settings al aceptar el job, así que el flag se limpia al generar.
+- Imágenes generadas: cache-busting con `imgSrc()`/`assetVersion` en `public/app.js` (la ruta no cambia al regenerar). Los assets del front se sirven con `Cache-Control: no-store`.
+- `SD_STAGES_TTL_HOURS` (default 0) purga `_stages` viejos; los inpaints los usan como fuente preferida (evita aplanar el fondo removido).
 
 ## Estructura
 

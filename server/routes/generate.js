@@ -3,7 +3,8 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import {
   getCharacterRow, getBaseRow, getVariantRow,
-  createBase, updateBase, createVariant, updateVariant, createInpaint,
+  createBase, updateBase, createVariant, updateVariant,
+  upsertInpaint, getInpaintByVariantLabel,
   normSeed, inpaintSeed,
 } from '../../db.js';
 import {
@@ -350,8 +351,18 @@ router.post('/inpaint-variant', (req, res) => {
 
   const seed = normSeed(body.seed) ?? inpaintSeed(char.key, variantId, label);
 
-  const row = createInpaint({
-    variantId,
+  // El identificador es único por variante: regenerar con el mismo label
+  // sobrescribe el inpaint existente (misma fila, misma imagen en disco) en
+  // vez de crear otro. Así el nombre del descargable se mantiene estable.
+  const existing = getInpaintByVariantLabel(variantId, label);
+  if (existing) {
+    const active = findActiveJob('inpaint', existing.id);
+    if (active) {
+      return res.status(409).json({ error: `Ya hay una generación en curso para este inpaint (job ${active.id}).` });
+    }
+  }
+
+  const inpaintFields = {
     label,
     region,
     prompt,
@@ -366,13 +377,15 @@ router.post('/inpaint-variant', (req, res) => {
     rembg: body.rembg !== false,
     identityMode,
     identityStrength,
-  });
+  };
+  const { row } = upsertInpaint({ variantId, ...inpaintFields });
 
   const jobId = nextJobId();
   const job = {
     id: jobId,
     kind: 'inpaint',
     refId: row.id,
+    variantId,
     status: 'pending',
     cancelled: false,
     currentProc: null,

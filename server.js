@@ -6,7 +6,8 @@ import { fileURLToPath } from 'url';
 import { initDb, countCharacters, closeDb } from './db.js';
 import { runSeed, loadCharacterData } from './seed.js';
 import { jobs } from './server/jobs.js';
-import { PORT, HOST, OUTPUT_DIR, MODEL_DIR, SD_BINARY, DEFAULT_MODEL_FILE } from './server/config.js';
+import { PORT, HOST, OUTPUT_DIR, MODEL_DIR, SD_BINARY, DEFAULT_MODEL_FILE, STAGES_TTL_HOURS } from './server/config.js';
+import { pruneStages } from './server/util.js';
 import { initRembg } from './server/rembg.js';
 import { initSamplerOptions } from './server/sdcli.js';
 import charactersRouter from './server/routes/characters.js';
@@ -21,7 +22,11 @@ const app = express();
 
 app.use(express.json({ limit: '2mb' }));
 app.use('/generated', express.static(OUTPUT_DIR));
-app.use(express.static(join(__dirname, 'public')));
+// Assets del front con no-store: al ser un server local, evita que el navegador
+// siga ejecutando un app.js/style.css viejo después de un cambio.
+app.use(express.static(join(__dirname, 'public'), {
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-store'),
+}));
 
 if (!existsSync(OUTPUT_DIR)) mkdirSync(OUTPUT_DIR, { recursive: true });
 
@@ -35,6 +40,28 @@ app.use('/api', metaRouter);
 // ---------------------------------------------------------------------------
 // Arranque
 // ---------------------------------------------------------------------------
+
+// Avisos de configuración: mejor verlos al arrancar que al lanzar la primera
+// generación (los defaults de config.js son solo un último recurso).
+function warnConfig() {
+  if (!process.env.SD_BINARY) console.warn(`SD_BINARY no definido en .env — usando ${SD_BINARY}`);
+  if (!existsSync(SD_BINARY)) console.warn(`sd-cli no encontrado: ${SD_BINARY} (revisá SD_BINARY).`);
+  if (!process.env.SD_MODEL_DIR) console.warn(`SD_MODEL_DIR no definido en .env — usando ${MODEL_DIR}`);
+  if (!process.env.SD_DEFAULT_MODEL) console.warn(`SD_DEFAULT_MODEL no definido en .env — usando ${DEFAULT_MODEL_FILE}`);
+  if (existsSync(MODEL_DIR) && !existsSync(join(MODEL_DIR, DEFAULT_MODEL_FILE))) {
+    console.warn(`Modelo por defecto no encontrado: ${join(MODEL_DIR, DEFAULT_MODEL_FILE)} (revisá SD_DEFAULT_MODEL).`);
+  }
+}
+warnConfig();
+
+// Purga periódica de intermedios (_stages). Deshabilitada salvo que se fije
+// SD_STAGES_TTL_HOURS > 0.
+if (STAGES_TTL_HOURS > 0) {
+  setInterval(() => {
+    const removed = pruneStages(STAGES_TTL_HOURS * 60 * 60 * 1000);
+    if (removed) console.log(`Limpieza de _stages: ${removed} archivo(s) eliminado(s).`);
+  }, 60 * 60 * 1000).unref();
+}
 
 initDb();
 

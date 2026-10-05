@@ -111,7 +111,7 @@
                   <label class="full">Body <textarea x-model="detail.char.body" rows="1"></textarea></label>
                   <label class="full">Negative identity (rasgos, NUNCA ropa) <textarea x-model="detail.char.negative_identity" rows="2"></textarea></label>
                 </div>
-                <button class="btn btn-primary btn-sm" @click="saveIdentity()">Guardar identidad</button>
+                <button class="btn btn-sm btn-primary" @click="saveIdentity()">Guardar identidad</button>
               </fieldset>
 
               <h3>Bases <span class="muted" x-text="`(${detail.bases.length})`"></span></h3>
@@ -119,7 +119,7 @@
                 <template x-for="b in detail.bases" :key="'b'+b.id">
                   <div class="item-card">
                     <div class="item-img" @click="openBaseModal(b)">
-                      <img x-show="b.image_path" :src="b.image_path" loading="lazy">
+                      <img x-show="b.image_path" :src="imgSrc(b.image_path)" loading="lazy">
                       <span x-show="!b.image_path" class="muted">sin generar</span>
                     </div>
                     <div class="item-body">
@@ -130,7 +130,7 @@
                     <div class="item-actions">
                       <button class="btn btn-sm" x-text="b.image_path ? 'Editar' : 'Generar'" @click="openBaseModal(b)"></button>
                       <button class="btn btn-sm" @click="cloneBase(b.id)">Clonar</button>
-                      <button class="btn btn-danger btn-sm" @click="confirmDelete('Base', `Eliminar base ${b.id} y su imagen.`, () => deleteBase(b.id))">×</button>
+                      <button class="btn btn-sm btn-danger" @click="confirmDelete('Base', `Eliminar base ${b.id} y su imagen.`, () => deleteBase(b.id))">×</button>
                     </div>
                   </div>
                 </template>
@@ -141,14 +141,14 @@
                 <template x-for="v in detail.variants" :key="'v'+v.id">
                   <div class="item-card">
                     <div class="item-img" @click="openVariantModal(v)">
-                      <img x-show="v.image_path" :src="v.image_path" loading="lazy">
+                      <img x-show="v.image_path" :src="imgSrc(v.image_path)" loading="lazy">
                       <span x-show="!v.image_path" class="muted">sin generar</span>
                     </div>
                     <template x-if="inpaintsFor(v.id).length">
                       <div class="inpaint-thumbs">
                         <template x-for="ip in inpaintsFor(v.id)" :key="'ip'+ip.id">
                           <div class="inpaint-thumb" :title="`inpaint: ${ip.label} — click para ver/reusar la config`">
-                            <img x-show="ip.image_path" :src="ip.image_path" loading="lazy" @click.stop="openInpaintModal(v, ip)">
+                            <img x-show="ip.image_path" :src="imgSrc(ip.image_path)" loading="lazy" @click.stop="openInpaintModal(v, ip)">
                             <span x-show="!ip.image_path" class="muted small">…</span>
                             <button class="inpaint-del" @click.stop="confirmDelete('Inpaint', `Eliminar inpaint ${ip.label} y su imagen.`, () => deleteInpaint(ip.id))" title="Eliminar">×</button>
                           </div>
@@ -165,7 +165,7 @@
                       <button class="btn btn-sm" x-text="v.image_path ? 'Editar' : 'Generar'" @click="openVariantModal(v)"></button>
                       <button class="btn btn-sm" x-show="v.image_path" @click="openInpaintModal(v)">Inpintar</button>
                       <button class="btn btn-sm" @click="cloneVariant(v.id)">Clonar</button>
-                      <button class="btn btn-danger btn-sm" @click="confirmDelete('Variante', `Eliminar variante ${v.label || v.id} y su imagen.`, () => deleteVariant(v.id))">×</button>
+                      <button class="btn btn-sm btn-danger" @click="confirmDelete('Variante', `Eliminar variante ${v.label || v.id} y su imagen.`, () => deleteVariant(v.id))">×</button>
                     </div>
                   </div>
                 </template>
@@ -202,7 +202,7 @@
           <div class="gallery-grid">
             <template x-for="g in galleryFiltered()" :key="g.kind+g.id">
               <div class="gallery-tile" @click="openGalleryItem(g)">
-                <img :src="g.image_path" loading="lazy">
+                <img :src="imgSrc(g.image_path)" loading="lazy">
                 <span class="gallery-badge" x-text="g.kind"></span>
                 <div class="gallery-caption">
                   <b x-text="g.character"></b>
@@ -230,7 +230,7 @@
                   <td><textarea x-model="row.negative" rows="3" @input="row._dirty=true"></textarea></td>
                   <td>
                     <button class="btn btn-sm btn-primary" @click="saveCollectionItem(view, row)" x-text="row._isNew ? 'Crear' : 'Guardar'"></button>
-                    <button class="btn btn-danger btn-sm" x-show="!row._isNew" @click="confirmDeleteCollection(row)">×</button>
+                    <button class="btn btn-sm btn-danger" x-show="!row._isNew" @click="confirmDeleteCollection(row)">×</button>
                   </td>
                 </tr>
               </template>
@@ -285,7 +285,7 @@
 
   <!-- ============ MODAL: base ============ -->
   <div class="modal-backdrop" x-show="baseModal" x-cloak>
-    <div class="modal modal-wide" x-show="baseModal" x-transition.opacity role="dialog" aria-modal="true" aria-label="Base">
+    <div class="modal modal-wide" x-show="baseModal" x-transition.opacity role="dialog" aria-modal="true" aria-label="Base" @input="markDirty(baseModal)" @change="markDirty(baseModal)">
       <template x-if="baseModal">
         <div x-init="focusModal($el)">
           <h3 x-text="baseModal.draft.baseId ? `Base ${baseModal.draft.baseId}` : 'Nueva base'"></h3>
@@ -340,7 +340,7 @@
                 </div>
               </template>
               <div class="result-img" x-show="baseModal.progress.outputPath">
-                <img :src="baseModal.progress.outputPath + '?t=' + (baseModal.progress.stamp || 0)" @click="openLightbox(baseModal.progress.outputPath)" title="Ver en tamaño original">
+                <img :src="imgSrc(baseModal.progress.outputPath)" @click="openLightbox(baseModal.progress.outputPath)" title="Ver en tamaño original">
               </div>
             </div>
           </div>
@@ -352,7 +352,7 @@
 
   <!-- ============ MODAL: variante ============ -->
   <div class="modal-backdrop" x-show="variantModal" x-cloak>
-    <div class="modal modal-wide" x-show="variantModal" x-transition.opacity role="dialog" aria-modal="true" aria-label="Variante">
+    <div class="modal modal-wide" x-show="variantModal" x-transition.opacity role="dialog" aria-modal="true" aria-label="Variante" @input="markDirty(variantModal)" @change="markDirty(variantModal)">
       <template x-if="variantModal">
         <div x-init="focusModal($el)">
           <h3 x-text="variantModal.draft.variantId ? `Variante ${variantModal.draft.variantId}` : 'Nueva variante'"></h3>
@@ -443,7 +443,7 @@
                 </div>
               </template>
               <div class="result-img" x-show="variantModal.progress.outputPath">
-                <img :src="variantModal.progress.outputPath + '?t=' + (variantModal.progress.stamp || 0)" @click="openLightbox(variantModal.progress.outputPath)" title="Ver en tamaño original">
+                <img :src="imgSrc(variantModal.progress.outputPath)" @click="openLightbox(variantModal.progress.outputPath)" title="Ver en tamaño original">
               </div>
             </div>
           </div>
@@ -455,7 +455,7 @@
 
   <!-- ============ MODAL: inpaint ============ -->
   <div class="modal-backdrop" x-show="inpaintModal" x-cloak>
-    <div class="modal modal-wide" x-show="inpaintModal" x-transition.opacity role="dialog" aria-modal="true" aria-label="Inpaint">
+    <div class="modal modal-wide" x-show="inpaintModal" x-transition.opacity role="dialog" aria-modal="true" aria-label="Inpaint" @input="markDirty(inpaintModal)" @change="markDirty(inpaintModal)">
       <template x-if="inpaintModal">
         <div x-init="focusModal($el)">
           <h3 x-text="`Inpintar cara — variante ${inpaintModal.source.label || inpaintModal.source.id}`"></h3>
@@ -540,7 +540,7 @@
                 </div>
               </template>
               <div class="result-img" x-show="inpaintModal.progress.outputPath">
-                <img :src="inpaintModal.progress.outputPath + '?t=' + (inpaintModal.progress.stamp || 0)" @click="openLightbox(inpaintModal.progress.outputPath)" title="Ver en tamaño original">
+                <img :src="imgSrc(inpaintModal.progress.outputPath)" @click="openLightbox(inpaintModal.progress.outputPath)" title="Ver en tamaño original">
               </div>
             </div>
           </div>
@@ -569,7 +569,7 @@
             <div class="gallery-compare">
               <figure>
                 <img
-                  :src="galleryModal.showOriginal && galleryModal.item.origin ? galleryModal.item.origin.image_path : galleryModal.item.image_path"
+                  :src="imgSrc(galleryModal.showOriginal && galleryModal.item.origin ? galleryModal.item.origin.image_path : galleryModal.item.image_path)"
                   loading="lazy"
                   @click="openLightbox(galleryModal.showOriginal && galleryModal.item.origin ? galleryModal.item.origin.image_path : galleryModal.item.image_path)">
                 <figcaption x-text="galleryModal.showOriginal && galleryModal.item.origin ? `origen: ${galleryModal.item.origin.title}` : (galleryModal.item.origin ? 'imagen generada' : '')"></figcaption>
@@ -615,12 +615,13 @@
   </div>
 
   <!-- ============ MODAL: confirmación ============ -->
-  <div class="modal-backdrop" x-show="confirmModal" x-cloak @click.self="confirmModal=null">
+  <div class="modal-backdrop confirm" x-show="confirmModal" x-cloak @click.self="confirmModal=null">
     <div class="modal">
       <h3 x-text="confirmModal?.title"></h3>
       <p x-text="confirmModal?.message"></p>
       <div class="btn-row">
-        <button class="btn btn-danger" @click="runConfirm()">Confirmar</button>
+        <button class="btn" :class="confirmModal?.confirmClass || 'btn-danger'" @click="runConfirm()" x-text="confirmModal?.confirmLabel || 'Confirmar'"></button>
+        <button class="btn" x-show="confirmModal && confirmModal.hasDiscard" @click="runDiscard()" x-text="confirmModal?.discardLabel || 'Descartar'"></button>
         <button class="btn" @click="confirmModal=null">Cancelar</button>
       </div>
     </div>

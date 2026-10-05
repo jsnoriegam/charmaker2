@@ -23,11 +23,14 @@ expresión. Todo el material de trabajo vive en **SQLite** y se edita desde la U
   `Clonar` duplica para experimentar sin tocar el original.
 - **Inpaint**: corrección de una región de una variante con `-M adetailer`
   (denoise + prompt propio). Se ancla la identidad con `none`, `prompt`,
-  PhotoMaker o IP-Adapter. Cada inpaint es una fila nueva con su imagen.
+  PhotoMaker o IP-Adapter. El **identificador** que le das es único por variante:
+  regenerar con el mismo lo **sobrescribe** (la imagen anterior va a `_history`).
 - **Framings / Accesorios / Prompts globales**: CRUDs propios en el menú.
 - **Preview en vivo**: cada modal muestra el positivo/negativo final que se va a
   mandar a sd-cli, con un aviso de **conflictos** (términos que aparecen en ambos
   lados).
+- **Cierre seguro**: al cerrar una base/variante/inpaint con cambios sin guardar,
+  pregunta si guardarlos antes de cerrar (Guardar / Descartar / Cancelar).
 
 ## Requisitos
 
@@ -36,7 +39,9 @@ expresión. Todo el material de trabajo vive en **SQLite** y se edita desde la U
 - **sd-cli** compilado (stable-diffusion.cpp) y checkpoints SDXL.
 - Frontend: **Alpine.js** (incluido en `public/vendor/`, sin build step).
 - (Opcional) Python 3 para el `.venv` de rembg: `bash scripts/setup-rembg.sh`
-  (el binario se resuelve: `REMBG_BIN` → `.venv/bin/rembg` → PATH).
+  instala rembg, descarga el modelo BiRefNet-general y lo deja en
+  `~/.rembg/models/birefnet-general/` (el binario se resuelve: `REMBG_BIN` →
+  `.venv/bin/rembg` → PATH).
 
 ## Uso
 
@@ -109,27 +114,27 @@ manda el texto de la región como `--ad-prompt`; con anclaje `prompt` antepone
 
 ### API
 
-| Endpoint                                                                          | Método              | Descripción                                                                                                           |
-| --------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `/api/characters[/:key]`                                                          | GET/POST/PUT/DELETE | CRUD personajes (borrar elimina también su carpeta de imágenes)                                                       |
-| `/api/characters/:key/bundle`                                                     | GET                 | `.zip` con todas las imágenes generadas (`{name}_base.png`, `{name}_{variant}.png`, `{name}_{variant}_{inpaint}.png`) |
-| `/api/bases?character=` · `/api/variants?character=` · `/api/inpaints?character=` | GET                 | listas del personaje                                                                                                  |
-| `/api/bases/:id/clone` · `/api/variants/:id/clone`                                | POST                | duplica fila + imagen con id nuevo                                                                                    |
-| `/api/bases/:id` · `/api/variants/:id`                                            | PUT/DELETE          | editar datos / borrar fila + archivo + stages                                                                         |
-| `/api/inpaints/:id`                                                               | PUT/DELETE          | editar config / borrar inpaint + archivo + stages                                                                     |
-| `/api/suggestions?character=`                                                     | GET                 | valores ya usados (datalists del modal)                                                                               |
-| `/api/preview`                                                                    | POST                | positivo/negativo + conflictos para un _borrador_ (el modal lo llama debounced)                                       |
-| `/api/framings[/:key]` · `/api/accessories[/:key]`                                | GET/POST/PUT/DELETE | CRUD colecciones                                                                                                      |
-| `/api/globals`                                                                    | PUT                 | segmentos globales                                                                                                    |
-| `/api/prompt-data`                                                                | GET/PUT             | export / import JSON completo (el import limpia imágenes huérfanas)                                                   |
-| `/api/gallery`                                                                    | GET                 | metadata de todas las imágenes (sin prompts)                                                                          |
-| `/api/gallery/:kind/:id`                                                          | GET                 | prompt resuelto de una imagen (`base`\|`variant`\|`inpaint`)                                                          |
-| `/api/generate-base`                                                              | POST                | `{character, baseId?, clothing, ...}` → job                                                                           |
-| `/api/generate-variant`                                                           | POST                | `{character, baseId, variantId?, expression, clothing, accessories, framingKey, method, strength, ...}`               |
-| `/api/inpaint-variant`                                                            | POST                | `{variantId, label, region, prompt, negative, denoise, identityMode, ...}` → job                                      |
-| `/api/jobs`                                                                       | GET                 | jobs activos/encolados (para rehidratar el seguimiento tras un refresh)                                               |
-| `/api/generate/:id/stream` · `/cancel` · `/:id`                                   | GET/POST            | SSE (incluye `queuePosition`), detener, estado                                                                        |
-| `/api/config` · `/api/models`                                                     | GET                 | entorno + checkpoints disponibles                                                                                     |
+| Endpoint                                                                          | Método              | Descripción                                                                                                                                |
+| --------------------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/characters[/:key]`                                                          | GET/POST/PUT/DELETE | CRUD personajes (borrar elimina también su carpeta de imágenes)                                                                            |
+| `/api/characters/:key/bundle`                                                     | GET                 | `.zip` con todas las imágenes generadas (`{name}_base.png`, `{name}_{variant}.png`, `{name}_{variant}_{inpaint}.png`)                      |
+| `/api/bases?character=` · `/api/variants?character=` · `/api/inpaints?character=` | GET                 | listas del personaje                                                                                                                       |
+| `/api/bases/:id/clone` · `/api/variants/:id/clone`                                | POST                | duplica fila + imagen con id nuevo                                                                                                         |
+| `/api/bases/:id` · `/api/variants/:id`                                            | PUT/DELETE          | editar datos / borrar fila + archivo + stages                                                                                              |
+| `/api/inpaints/:id`                                                               | PUT/DELETE          | editar config / borrar inpaint + archivo + stages                                                                                          |
+| `/api/suggestions?character=`                                                     | GET                 | valores ya usados (datalists del modal)                                                                                                    |
+| `/api/preview`                                                                    | POST                | positivo/negativo + conflictos para un _borrador_ (el modal lo llama debounced)                                                            |
+| `/api/framings[/:key]` · `/api/accessories[/:key]`                                | GET/POST/PUT/DELETE | CRUD colecciones                                                                                                                           |
+| `/api/globals`                                                                    | PUT                 | segmentos globales                                                                                                                         |
+| `/api/prompt-data`                                                                | GET/PUT             | export / import JSON completo (el import limpia imágenes huérfanas)                                                                        |
+| `/api/gallery`                                                                    | GET                 | metadata de todas las imágenes (sin prompts)                                                                                               |
+| `/api/gallery/:kind/:id`                                                          | GET                 | prompt resuelto de una imagen (`base`\|`variant`\|`inpaint`)                                                                               |
+| `/api/generate-base`                                                              | POST                | `{character, baseId?, clothing, ...}` → job                                                                                                |
+| `/api/generate-variant`                                                           | POST                | `{character, baseId, variantId?, expression, clothing, accessories, framingKey, method, strength, ...}`                                    |
+| `/api/inpaint-variant`                                                            | POST                | `{variantId, label, region, prompt, negative, denoise, identityMode, ...}` → job (el `label` es único por variante: regenerar sobrescribe) |
+| `/api/jobs`                                                                       | GET                 | jobs activos/encolados (para rehidratar el seguimiento tras un refresh)                                                                    |
+| `/api/generate/:id/stream` · `/cancel` · `/:id`                                   | GET/POST            | SSE (incluye `queuePosition`), detener, estado                                                                                             |
+| `/api/config` · `/api/models`                                                     | GET                 | entorno + checkpoints disponibles                                                                                                          |
 
 ### Generación
 
@@ -142,6 +147,8 @@ manda el texto de la región como `--ad-prompt`; con anclaje `prompt` antepone
   `method: none` omite el segundo pase. `SD_AD_FACE_STEPS` ajusta los steps del 2º pase.
 - Inpaint: `-M adetailer` sobre la región detectada, con `denoise` (0.05–0.95) y
   prompt propios; la fuente es el stage sin fondo de la variante (o la imagen final).
+  El identificador identifica al inpaint dentro de su variante: regenerar con el
+  mismo lo sobrescribe (misma fila e imagen; la anterior pasa a `_history`).
 - La referencia de identidad es la imagen de la base elegida; si tiene fondo
   transparente (rembg) se aplana sobre blanco antes de usarla.
 - Al regenerar sobre una base/variante existente, la imagen anterior se mueve a
@@ -169,9 +176,16 @@ Los ajustes habituales de SDXL/stable-diffusion.cpp (`SD_BINARY`, `SD_MODEL_DIR`
 `SD_DEFAULT_MODEL`, VAE, caché, `SD_AD_FACE_MODEL`, `SD_PHOTOMAKER_PATH`,
 `SD_IP_ADAPTER_PATH`, `SD_CLIP_VISION_PATH`…). Además: `REMBG_BIN`,
 `REMBG_MODEL` (default `birefnet-general`), `SD_AD_FACE_STEPS` (steps del 2º
-pase; si se omite usa los de la fila), `SD_HISTORY_KEEP` y
+pase; si se omite usa los de la fila), `SD_HISTORY_KEEP`, `SD_STAGES_TTL_HOURS`
+(purga opcional de intermedios `_stages`; 0 = deshabilitado) y
 `SERVER_HOST`/`SERVER_PORT` (default `127.0.0.1:3002`; usar
 `SERVER_HOST=0.0.0.0` para exponer en LAN). Ver `.env.example`.
+
+`scripts/setup-rembg.sh` precarga el modelo BiRefNet-general en
+`<home>/models/birefnet-general/birefnet-general.onnx`, donde `<home>` se
+resuelve igual que en rembg: `U2NET_HOME` → `REMBG_HOME` → `$XDG_DATA_HOME/rembg`
+→ `~/.rembg`. Se puede omitir con `REMBG_SKIP_MODEL=1`; si falta, rembg lo
+descarga solo al primer uso.
 
 ## Seguridad
 

@@ -234,6 +234,7 @@ export function initDb() {
     `),
     countVariantsByBase: db.prepare('SELECT COUNT(*) AS n FROM variants WHERE base_id = ?'),
     getInpaintById: db.prepare('SELECT * FROM inpaints WHERE id = ?'),
+    getInpaintByVariantLabel: db.prepare('SELECT * FROM inpaints WHERE variant_id = ? AND label = ?'),
     insertInpaint: db.prepare(`
       INSERT INTO inpaints (variant_id, label, region, prompt, negative, denoise, seed, steps, cfg, sampler, schedule, model, rembg, image_path, identity_mode, identity_strength)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -573,6 +574,20 @@ export function createInpaint(d) {
 
 export function getInpaintRow(id) {
   return stmts.getInpaintById.get(id) ?? null;
+}
+
+// El identificador (label) identifica al inpaint dentro de su variante: se usa
+// para sobrescribir en vez de duplicar.
+export function getInpaintByVariantLabel(variantId, label) {
+  return stmts.getInpaintByVariantLabel.get(variantId, label) ?? null;
+}
+
+// Crea el inpaint o, si ya existe uno con el mismo identificador en la misma
+// variante, lo sobrescribe. Devuelve { row, overwritten }.
+export function upsertInpaint({ variantId, ...d }) {
+  const existing = variantId != null ? getInpaintByVariantLabel(variantId, d.label ?? '') : null;
+  if (existing) return { row: updateInpaint(existing.id, d), overwritten: true };
+  return { row: createInpaint({ variantId, ...d }), overwritten: false };
 }
 
 export function getInpaint(id) {

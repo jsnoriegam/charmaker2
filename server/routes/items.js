@@ -5,7 +5,7 @@ import {
   getBase, getBaseRow, updateBase, cloneBase, deleteBase, listBases,
   getVariant, getVariantRow, updateVariant, cloneVariant, deleteVariant, listVariants,
   getInpaintRow, updateInpaint, deleteInpaint, listInpaints, getVariantSuggestions,
-  getCharacterRow,
+  getInpaintByVariantLabel, getCharacterRow,
 } from '../../db.js';
 import { PROJECT_ROOT } from '../config.js';
 import { httpError, crud, copyItemImage, itemDirs } from '../util.js';
@@ -128,6 +128,13 @@ router.put('/inpaints/:id', crud((req) => {
       throw httpError(400, 'La intensidad (denoise) debe estar entre 0.05 y 0.95.');
     }
     d.denoise = denoise;
+  }
+
+  // El label es único por variante: renombrar a uno ya usado daría dos filas
+  // con el mismo identificador (se pisarían al regenerar).
+  const clash = getInpaintByVariantLabel(row.variant_id, label);
+  if (clash && clash.id !== id) {
+    throw httpError(409, `Ya existe un inpaint "${label}" en esta variante.`);
   }
 
   const updated = updateInpaint(id, d);

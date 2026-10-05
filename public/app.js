@@ -67,6 +67,10 @@ function app() {
     lightbox: null,
     lightboxDims: '',
     _previewTimer: null,
+    // Cache-busting de imágenes generadas: la ruta no cambia al regenerar
+    // (base_5.png sigue siendo base_5.png), así que el navegador reusaría la
+    // copia vieja. Este contador sube en cada cambio y fuerza recalcular el src.
+    assetVersion: 0,
 
     // ---------------- init ----------------
 
@@ -93,7 +97,7 @@ function app() {
             kind: job.kind,
             character: job.character,
             refId: job.refId,
-            variantId: job.kind === 'inpaint' ? job.refId : undefined,
+            variantId: job.kind === 'inpaint' ? job.variantId : undefined,
             label: this.jobLabel(job),
             status: job.status,
             percent: job.progress?.percent ?? 0,
@@ -246,6 +250,7 @@ function app() {
     // vieja: se vacía y, si la vista está abierta, se recarga.
     invalidateGallery() {
       this.gallery = [];
+      this.bumpAssets();
       if (this.view === 'gallery') this.ensureGallery();
     },
 
@@ -323,9 +328,25 @@ function app() {
       this._toastT = setTimeout(() => { this.toastMsg = ''; }, 3000);
     },
 
+    bumpAssets() {
+      this.assetVersion++;
+    },
+
+    // Marca un modal como "con cambios sin guardar" (lo dispara @input/@change).
+    markDirty(modal) {
+      if (modal) modal.dirty = true;
+    },
+
+    // URL de una imagen generada con el cache-buster de la versión actual.
+    imgSrc(path) {
+      if (!path) return path;
+      const base = String(path).split('?')[0];
+      return `${base}?v=${this.assetVersion}`;
+    },
+
     // Muestra la última base generada como avatar del listado.
     avatarStyle(c) {
-      return c?.thumb ? `background-image:url('${c.thumb}')` : '';
+      return c?.thumb ? `background-image:url('${this.imgSrc(c.thumb)}')` : '';
     },
 
     anyModalOpen() {
@@ -371,6 +392,9 @@ function app() {
 
     async refreshDetail() {
       if (!this.detail) return;
+      // Las imágenes del personaje pueden haber cambiado (regeneración): bumpear
+      // ANTES del primer await para que el re-render sea uno solo y se recarguen.
+      this.bumpAssets();
       await this.openCharacter(this.detail.key);
     },
 
@@ -423,6 +447,38 @@ function app() {
       const action = this.confirmModal?.action;
       this.confirmModal = null;
       if (action) await action();
+    },
+
+    runDiscard() {
+      const discard = this.confirmModal?.discard;
+      this.confirmModal = null;
+      if (discard) discard();
+    },
+
+    // Diálogo "¿guardar antes de cerrar?" para un modal con cambios sin guardar.
+    confirmUnsaved(kind) {
+      this.confirmModal = {
+        title: 'Cambios sin guardar',
+        message: 'Modificaste la configuración de este item. ¿Querés guardarla antes de cerrar?',
+        confirmLabel: 'Guardar',
+        confirmClass: 'btn-primary',
+        discardLabel: 'Descartar',
+        hasDiscard: true,
+        action: async () => {
+          const ok = kind === 'base' ? await this.saveBaseChanges()
+            : kind === 'variant' ? await this.saveVariantChanges()
+              : await this.saveInpaintChanges();
+          if (ok) this.closeModalNow(kind);
+        },
+        discard: () => this.closeModalNow(kind),
+      };
+    },
+
+    closeModalNow(kind) {
+      if (kind === 'base') this.baseModal = null;
+      else if (kind === 'variant') this.variantModal = null;
+      else this.inpaintModal = null;
+      this.refreshDetail();
     },
 
     // ---------------- preview en vivo ----------------
@@ -480,6 +536,7 @@ function app() {
         },
         preview: { positive: '', negative: '' },
         conflicts: [],
+        dirty: false,
         busy: !!existingJob,
         jobId: existingJob?.jobId ?? null,
         progress: existingJob ? { ...existingJob } : { outputPath: base?.image_path ?? null },
@@ -488,8 +545,11 @@ function app() {
     },
 
     closeBaseModal() {
-      this.baseModal = null;
-      this.refreshDetail();
+      if (this.baseModal?.dirty && this.baseModal?.draft.baseId) {
+        this.confirmUnsaved('base');
+        return;
+      }
+      this.closeModalNow('base');
     },
 
     async generateBase() {
@@ -510,6 +570,7 @@ function app() {
           },
         });
         m.jobId = jobId;
+        m.dirty = false; // la ruta ya persistió estos settings al aceptar el job
         d.baseId = d.baseId || baseId;
         const jobEntry = {
           jobId, kind: 'base', character: this.detail.key, refId: baseId,
@@ -527,7 +588,7 @@ function app() {
     async saveBaseChanges() {
       const m = this.baseModal;
       const d = m.draft;
-      if (!d.baseId) return;
+      if (!d.baseId) return false;
       try {
         await api(`/api/bases/${d.baseId}`, {
           method: 'PUT',
@@ -538,9 +599,11 @@ function app() {
             rembg: d.rembg,
           },
         });
+        m.dirty = false;
         this.toast('Base guardada', 'ok');
         await this.refreshDetail();
-      } catch (err) { this.toast(err.message, 'err'); }
+        return true;
+      } catch (err) { this.toast(err.message, 'err'); return false; }
     },
 
     async cloneBase(id) {
@@ -590,6 +653,7 @@ function app() {
         },
         preview: { positive: '', negative: '' },
         conflicts: [],
+        dirty: false,
         busy: !!existingJob,
         jobId: existingJob?.jobId ?? null,
         progress: existingJob ? { ...existingJob } : { outputPath: variant?.image_path ?? null },
@@ -598,8 +662,11 @@ function app() {
     },
 
     closeVariantModal() {
-      this.variantModal = null;
-      this.refreshDetail();
+      if (this.variantModal?.dirty && this.variantModal?.draft.variantId) {
+        this.confirmUnsaved('variant');
+        return;
+      }
+      this.closeModalNow('variant');
     },
 
     strengthError(d) {
@@ -652,6 +719,7 @@ function app() {
           },
         });
         m.jobId = jobId;
+        m.dirty = false; // la ruta ya persistió estos settings al aceptar el job
         d.variantId = d.variantId || variantId;
         const jobEntry = {
           jobId, kind: 'variant', character: this.detail.key, refId: variantId,
@@ -669,9 +737,9 @@ function app() {
     async saveVariantChanges() {
       const m = this.variantModal;
       const d = m.draft;
-      if (!d.variantId) return;
+      if (!d.variantId) return false;
       const strengthErr = this.strengthError(d);
-      if (strengthErr) { this.toast(strengthErr, 'err'); return; }
+      if (strengthErr) { this.toast(strengthErr, 'err'); return false; }
       const [width, height] = d.size.split('x').map(Number);
       try {
         await api(`/api/variants/${d.variantId}`, {
@@ -685,9 +753,11 @@ function app() {
             width, height, rembg: d.rembg,
           },
         });
+        m.dirty = false;
         this.toast('Variante guardada', 'ok');
         await this.refreshDetail();
-      } catch (err) { this.toast(err.message, 'err'); }
+        return true;
+      } catch (err) { this.toast(err.message, 'err'); return false; }
     },
 
     async cloneVariant(id) {
@@ -739,6 +809,7 @@ function app() {
       this.inpaintModal = {
         source: variant,
         editingId: existingInpaint?.id ?? null,
+        dirty: false,
         draft: {
           variantId: variant.id,
           label: existingInpaint?.label ?? '',
@@ -759,8 +830,11 @@ function app() {
     },
 
     closeInpaintModal() {
-      this.inpaintModal = null;
-      this.refreshDetail();
+      if (this.inpaintModal?.dirty && this.inpaintModal?.editingId) {
+        this.confirmUnsaved('inpaint');
+        return;
+      }
+      this.closeModalNow('inpaint');
     },
 
     defaultIdentityStrength(identityMode) {
@@ -813,15 +887,17 @@ function app() {
     // Actualiza la config del inpaint existente sin generar una imagen nueva.
     async saveInpaintChanges() {
       const m = this.inpaintModal;
-      if (!m?.editingId) return;
+      if (!m?.editingId) return false;
       const d = m.draft;
       const err = this.validateInpaintDraft(d);
-      if (err) { this.toast(err, 'err'); return; }
+      if (err) { this.toast(err, 'err'); return false; }
       try {
         await api(`/api/inpaints/${m.editingId}`, { method: 'PUT', body: this.inpaintBody(d) });
+        m.dirty = false;
         this.toast('Inpaint guardado', 'ok');
         await this.refreshDetail();
-      } catch (e) { this.toast(e.message, 'err'); }
+        return true;
+      } catch (e) { this.toast(e.message, 'err'); return false; }
     },
 
     async runInpaint() {
@@ -837,6 +913,7 @@ function app() {
           body: this.inpaintBody(d),
         });
         m.jobId = jobId;
+        m.dirty = false; // la ruta ya persistió estos settings al aceptar el job
         const jobEntry = {
           jobId, kind: 'inpaint', character: this.detail.key, refId: inpaintId, variantId: d.variantId,
           label: `Inpaint ${m.source.label || 'variante'}_${d.label} — ${this.detail.key}`,
@@ -877,54 +954,99 @@ function app() {
       this.finishedJobs = [jobEntry, ...this.finishedJobs].slice(0, 10);
     },
 
-    watchJob(jobId, jobEntry) {
-      const es = new EventSource(`/api/generate/${jobId}/stream`);
-      es.onmessage = async (e) => {
-        const msg = JSON.parse(e.data);
-        const p = msg.progress || {};
-        Object.assign(jobEntry, {
-          status: msg.status,
-          stage: p.stage,
-          percent: p.percent ?? jobEntry.percent ?? 0,
-          currentStep: p.currentStep ?? 0,
-          totalSteps: p.totalSteps ?? jobEntry.totalSteps,
-          error: msg.error || '',
-          queuePosition: msg.queuePosition ?? jobEntry.queuePosition ?? null,
-        });
+    // Aplica un estado de job (venga de SSE o del polling de respaldo) y
+    // devuelve true cuando llegó a un estado terminal.
+    applyJobState(jobId, jobEntry, msg) {
+      const p = msg.progress || {};
+      Object.assign(jobEntry, {
+        status: msg.status,
+        stage: p.stage,
+        percent: p.percent ?? jobEntry.percent ?? 0,
+        currentStep: p.currentStep ?? 0,
+        totalSteps: p.totalSteps ?? jobEntry.totalSteps,
+        error: msg.error || '',
+        queuePosition: msg.queuePosition ?? jobEntry.queuePosition ?? null,
+      });
 
-        // Si el modal de este item sigue abierto, reflejar el progreso ahí también.
-        const modal = this.modalForJob(jobId);
+      // Si el modal de este item sigue abierto, reflejar el progreso ahí también.
+      const modal = this.modalForJob(jobId);
+      if (modal) {
+        modal.progress = { ...modal.progress, ...jobEntry };
+        if (msg.seed !== undefined && msg.seed !== null) modal.draft.seed = msg.seed;
+      }
+
+      if (msg.status === 'done') {
+        jobEntry.outputPath = msg.outputPath;
+        jobEntry.stamp = Date.now();
         if (modal) {
-          modal.progress = { ...modal.progress, ...jobEntry };
-          if (msg.seed !== undefined && msg.seed !== null) modal.draft.seed = msg.seed;
+          modal.progress.outputPath = msg.outputPath;
+          modal.progress.stamp = jobEntry.stamp;
+          modal.busy = false;
         }
+        this.removeActiveJob(jobId);
+        this.finishJob({ ...jobEntry, status: 'done', percent: 100 });
+        this.refreshDetail();
+        this.invalidateGallery();
+        this.loadCharacters();
+        this.toast(`Generación terminada — ${jobEntry.label}`, 'ok');
+        return true;
+      }
+      if (msg.status === 'error' || msg.status === 'cancelled') {
+        if (modal) modal.busy = false;
+        this.removeActiveJob(jobId);
+        this.finishJob({ ...jobEntry });
+        this.toast(
+          msg.status === 'error' ? `Error en la generación — ${jobEntry.label}` : `Cancelada — ${jobEntry.label}`,
+          msg.status === 'error' ? 'err' : ''
+        );
+        return true;
+      }
+      return false;
+    },
 
-        if (msg.status === 'done') {
-          jobEntry.outputPath = msg.outputPath;
-          jobEntry.stamp = Date.now();
-          es.close();
-          if (modal) {
-            modal.progress.outputPath = msg.outputPath;
-            modal.progress.stamp = jobEntry.stamp;
-            modal.busy = false;
-          }
-          this.removeActiveJob(jobId);
-          this.finishJob({ ...jobEntry, status: 'done', percent: 100 });
-          await this.refreshDetail();
-          this.invalidateGallery();
-          this.toast(`Generación terminada — ${jobEntry.label}`, 'ok');
-        } else if (msg.status === 'error' || msg.status === 'cancelled') {
-          es.close();
-          if (modal) modal.busy = false;
-          this.removeActiveJob(jobId);
-          this.finishJob({ ...jobEntry });
-          this.toast(
-            msg.status === 'error' ? `Error en la generación — ${jobEntry.label}` : `Cancelada — ${jobEntry.label}`,
-            msg.status === 'error' ? 'err' : ''
-          );
-        }
+    watchJob(jobId, jobEntry) {
+      let es = null;
+      let pollTimer = null;
+      let stopped = false;
+
+      const stop = () => {
+        stopped = true;
+        if (es) { es.close(); es = null; }
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
       };
-      es.onerror = () => { /* si el stream cae, el job sigue en el server; se pierde el tracking en vivo */ };
+
+      // Respaldo: si el stream se corta (server reiniciado, red, etc.), el job
+      // sigue corriendo en el server; consultamos su estado puntual para no
+      // dejar el modal colgado ni perder el resultado.
+      const poll = async () => {
+        if (stopped) return;
+        let job;
+        try {
+          job = await api(`/api/generate/${jobId}`);
+        } catch {
+          // 404: el job ya no existe en el server (purgado) — dejamos de trackear.
+          this.removeActiveJob(jobId);
+          stop();
+          return;
+        }
+        if (stopped) return;
+        if (this.applyJobState(jobId, jobEntry, {
+          status: job.status, progress: job.progress, outputPath: job.outputPath,
+          error: job.error, seed: job.seed, queuePosition: job.queuePosition,
+        })) stop();
+      };
+
+      es = new EventSource(`/api/generate/${jobId}/stream`);
+      es.onmessage = (e) => {
+        let msg;
+        try { msg = JSON.parse(e.data); } catch { return; }
+        if (this.applyJobState(jobId, jobEntry, msg)) stop();
+      };
+      es.onerror = () => {
+        // EventSource reintenta solo; por si no logra reconectar, sondeamos.
+        if (es) { es.close(); es = null; }
+        if (!stopped && !pollTimer) pollTimer = setInterval(poll, 2000);
+      };
     },
 
     async cancelJob(modal) {
@@ -1001,7 +1123,8 @@ function app() {
     openLightbox(path) {
       if (!path) return;
       this.lightboxDims = '';
-      this.lightbox = `${path}?orig=${Date.now()}`;
+      const base = String(path).split('?')[0];
+      this.lightbox = `${base}?orig=${Date.now()}`;
     },
 
     async importJSON(event) {

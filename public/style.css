@@ -186,7 +186,14 @@ select option:disabled { color: var(--muted); }
 
 /* ---------------- botones ---------------- */
 
+/* Botón y enlace-botón comparten exactamente la misma caja: misma altura
+   (line-height explícito) y contenido centrado, sin importar si es <button>
+   o <a>. Las variantes cambian color, no tamaño. */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
@@ -195,14 +202,18 @@ select option:disabled { color: var(--muted); }
   cursor: pointer;
   font-size: 13px;
   font-family: inherit;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
 }
-a.btn { text-decoration: none; display: inline-block; }
 .btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--surface-2); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--accent-strong); border-color: var(--accent-strong); }
 .btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); }
-.btn-danger:hover { background: var(--danger); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 
 .btn-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
@@ -256,6 +267,9 @@ legend { color: var(--muted); font-size: 12px; padding: 0 6px; }
   position: fixed; inset: 0; background: rgba(30, 31, 33, 0.45);
   display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px;
 }
+/* Confirmación por encima de los modales de generación: el modal de abajo queda
+   visible (atenuado) mientras se decide, en vez de parecer cerrado. */
+.modal-backdrop.confirm { z-index: 60; }
 .modal {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 22px; width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto;

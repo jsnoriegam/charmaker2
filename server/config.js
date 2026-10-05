@@ -11,11 +11,15 @@ export const PORT = process.env.SERVER_PORT || 3002;
 export const HOST = process.env.SERVER_HOST || '127.0.0.1';
 
 export const SD_BINARY = process.env.SD_BINARY || join(PROJECT_ROOT, 'stable-diffusion.cpp', 'build', 'bin', 'sd-cli');
-export const MODEL_DIR = process.env.SD_MODEL_DIR || join(PROJECT_ROOT, '..', 'vn-migration', 'models');
+export const MODEL_DIR = process.env.SD_MODEL_DIR || join(PROJECT_ROOT, 'models');
 export const LORA_MODEL_DIR = process.env.SD_LORA_MODEL_DIR || process.env.SD_LORA_DIR || null;
 export const OUTPUT_DIR = join(PROJECT_ROOT, 'generated');
 export const DEFAULT_MODEL_FILE = process.env.SD_DEFAULT_MODEL || 'zavychromaxl_v100.safetensors';
 export const HISTORY_KEEP = process.env.SD_HISTORY_KEEP ? parseInt(process.env.SD_HISTORY_KEEP, 10) : 5;
+// Limpieza opcional de intermedios (_stages: raw/scene/source de cada item).
+// Los inpaints los prefieren como fuente (evita aplanar el fondo removido), así
+// que purgarlos degrada un poco eso a cambio de espacio. 0 = deshabilitado.
+export const STAGES_TTL_HOURS = process.env.SD_STAGES_TTL_HOURS ? parseInt(process.env.SD_STAGES_TTL_HOURS, 10) : 0;
 
 export const WIDTH = 832;
 export const HEIGHT = 1216;
