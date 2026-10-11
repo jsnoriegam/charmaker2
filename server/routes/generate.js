@@ -324,7 +324,9 @@ router.post('/inpaint-variant', (req, res) => {
 
   let settings;
   try {
-    settings = resolveGenerationSettings({}, variantRow);
+    // El body puede sobrescribir los ajustes; si no vienen, se heredan de la
+    // variante origen (modelo/steps/cfg/sampler/schedule).
+    settings = resolveGenerationSettings(body, variantRow);
   } catch (e) {
     return res.status(e.statusCode || 400).json({ error: e.i18nKey || e.message, params: e.i18nParams });
   }

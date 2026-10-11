@@ -41,6 +41,8 @@ the expression. All working data lives in **SQLite** and is edited from the UI.
   it so you can experiment without touching the original.
 - **Inpaint**: region correction on a variant with `-M adetailer` (its own denoise
   and prompt). Identity is anchored with `none`, `prompt`, PhotoMaker or IP-Adapter.
+  Its generation settings (model, steps, cfg, sampler, schedule) default to the
+  source variant but can be overridden per inpaint.
   The **identifier** you give it is unique per variant: regenerating with the same
   one **overwrites** it (the previous image goes to `_history`).
 - **Framings / Accessories / Global prompts**: their own CRUD screens in the sidebar.

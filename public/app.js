@@ -111,31 +111,58 @@ function app() {
     // (p. ej. tras un refresh de la página).
     async resumeJobs() {
       try {
-        const { jobs } = await api('/api/jobs');
-        for (const job of jobs) {
-          if (this.activeJobs.some(j => j.jobId === job.id)) continue;
-          const entry = {
-            jobId: job.id,
-            kind: job.kind,
-            character: job.character,
-            refId: job.refId,
-            variantId: job.kind === 'inpaint' ? job.variantId : undefined,
-            label: this.jobLabel(job),
-            status: job.status,
-            percent: job.progress?.percent ?? 0,
-            currentStep: job.progress?.currentStep ?? 0,
-            totalSteps: job.progress?.totalSteps,
-            stage: job.progress?.stage || '',
-            stageParams: job.progress?.stageParams,
-            error: job.error || '',
-            queuePosition: job.queuePosition ?? null,
-          };
-          this.activeJobs.push(entry);
-          this.watchJob(job.id, entry);
-        }
+        await this.syncActiveJobs();
       } catch (err) {
         // Si falla, el seguimiento en vivo arranca igual al lanzar nuevos jobs.
       }
+    },
+
+    // Trae los jobs activos del server y agrega a la bandeja los que este
+    // navegador todavía no sigue (p. ej. lanzados desde otro navegador).
+    async syncActiveJobs() {
+      const { jobs } = await api('/api/jobs');
+      for (const job of jobs) {
+        if (this.activeJobs.some(j => j.jobId === job.id)) continue;
+        const entry = {
+          jobId: job.id,
+          kind: job.kind,
+          character: job.character,
+          refId: job.refId,
+          variantId: job.kind === 'inpaint' ? job.variantId : undefined,
+          label: this.jobLabel(job),
+          status: job.status,
+          percent: job.progress?.percent ?? 0,
+          currentStep: job.progress?.currentStep ?? 0,
+          totalSteps: job.progress?.totalSteps,
+          stage: job.progress?.stage || '',
+          stageParams: job.progress?.stageParams,
+          error: job.error || '',
+          queuePosition: job.queuePosition ?? null,
+        };
+        this.activeJobs.push(entry);
+        this.watchJob(job.id, entry);
+      }
+      return jobs;
+    },
+
+    // Antes de encolar un job: sincroniza la bandeja desde el server y, si ya
+    // hay algo en ejecución/encolado, pide confirmación (el server encola igual,
+    // en FIFO). Si el chequeo falla, no bloquea el lanzamiento.
+    async guardQueue(run) {
+      let busy = [];
+      try {
+        await this.syncActiveJobs();
+        busy = this.activeJobs.filter(j => j.status === 'pending' || j.status === 'running');
+      } catch { /* si no se pudo consultar, seguimos sin bloquear */ }
+      if (!busy.length) { await run(); return; }
+      const current = busy[0];
+      this.confirmModal = {
+        title: this.t('confirm.busyTitle'),
+        message: this.t('confirm.busyMsg', { label: current.label }),
+        confirmLabel: this.t('confirm.enqueueAnyway'),
+        confirmClass: 'btn-primary',
+        action: () => run(),
+      };
     },
 
     jobLabel(job) {
@@ -591,7 +618,12 @@ function app() {
       this.closeModalNow('base');
     },
 
-    async generateBase() {
+    generateBase() {
+      if (this.baseModal?.busy) return;
+      return this.guardQueue(() => this.runGenerateBase());
+    },
+
+    async runGenerateBase() {
       const m = this.baseModal;
       const d = m.draft;
       m.busy = true;
@@ -759,11 +791,17 @@ function app() {
       this.schedulePreview();
     },
 
-    async generateVariant() {
+    generateVariant() {
+      const m = this.variantModal;
+      if (!m || m.busy) return;
+      const strengthErr = this.strengthError(m.draft);
+      if (strengthErr) { this.toast(strengthErr, 'err'); return; }
+      return this.guardQueue(() => this.runGenerateVariant());
+    },
+
+    async runGenerateVariant() {
       const m = this.variantModal;
       const d = m.draft;
-      const strengthErr = this.strengthError(d);
-      if (strengthErr) { this.toast(strengthErr, 'err'); return; }
       m.busy = true;
       m.progress = { status: 'pending', percent: 0, stage: 'stages.queued' };
       const [width, height] = d.size.split('x').map(Number);
@@ -877,6 +915,16 @@ function app() {
       if (strengthBounds && !this.strengthValid(strength, strengthBounds)) {
         strength = this.defaultIdentityStrength(defaultIdentityMethod);
       }
+      // Ajustes del pase principal: por defecto hereda de la variante, pero cada
+      // inpaint puede sobrescribirlos (las columnas ya existen en la DB).
+      const inherited = rowSettings(variant, this.config);
+      const settings = {
+        steps: existingInpaint?.steps ?? inherited.steps,
+        cfg: existingInpaint?.cfg ?? inherited.cfg,
+        sampler: existingInpaint?.sampler ? (LEGACY_SAMPLERS[existingInpaint.sampler] || existingInpaint.sampler) : inherited.sampler,
+        schedule: existingInpaint?.schedule ?? inherited.schedule,
+        model: existingInpaint?.model ?? inherited.model,
+      };
       this.inpaintModal = {
         source: variant,
         editingId: existingInpaint?.id ?? null,
@@ -893,6 +941,7 @@ function app() {
           seedAuto: !existingInpaint?.seed,
           seed: existingInpaint?.seed ?? '',
           rembg: existingInpaint ? !!existingInpaint.rembg : this.config.rembg.available,
+          ...settings,
         },
         busy: !!existingJob,
         jobId: existingJob?.jobId ?? null,
@@ -951,6 +1000,7 @@ function app() {
         identityMethod: d.identityMethod,
         strength: (d.identityMethod === 'photomaker' || d.identityMethod === 'ipadapter')
           ? parseFloat(d.strength) : undefined,
+        steps: d.steps, cfg: d.cfg, sampler: d.sampler, schedule: d.schedule, model: d.model,
         seed: d.seedAuto ? null : parseInt(d.seed, 10), rembg: d.rembg,
       };
     },
@@ -971,11 +1021,17 @@ function app() {
       } catch (e) { this.toast(e.message, 'err'); return false; }
     },
 
-    async runInpaint() {
+    runInpaint() {
+      const m = this.inpaintModal;
+      if (!m || m.busy) return;
+      const validationErr = this.validateInpaintDraft(m.draft);
+      if (validationErr) { this.toast(validationErr, 'err'); return; }
+      return this.guardQueue(() => this.runInpaintJob());
+    },
+
+    async runInpaintJob() {
       const m = this.inpaintModal;
       const d = m.draft;
-      const validationErr = this.validateInpaintDraft(d);
-      if (validationErr) { this.toast(validationErr, 'err'); return; }
       m.busy = true;
       m.progress = { status: 'pending', percent: 0, stage: 'stages.queued' };
       try {
@@ -1028,47 +1084,51 @@ function app() {
     // Aplica un estado de job (venga de SSE o del polling de respaldo) y
     // devuelve true cuando llegó a un estado terminal.
     applyJobState(jobId, jobEntry, msg) {
+      // Mutar a través del proxy reactivo de activeJobs: el jobEntry crudo que
+      // se pasó al crear el job comparte el objeto pero no es el proxy que Alpine
+      // observa, así que mutarlo no re-renderiza la tarjeta de la cola.
+      const entry = this.activeJobs.find(j => j.jobId === jobId) || jobEntry;
       const p = msg.progress || {};
-      Object.assign(jobEntry, {
+      Object.assign(entry, {
         status: msg.status,
         stage: p.stage,
         stageParams: p.stageParams,
-        percent: p.percent ?? jobEntry.percent ?? 0,
+        percent: p.percent ?? entry.percent ?? 0,
         currentStep: p.currentStep ?? 0,
-        totalSteps: p.totalSteps ?? jobEntry.totalSteps,
+        totalSteps: p.totalSteps ?? entry.totalSteps,
         error: msg.error || '',
-        queuePosition: msg.queuePosition ?? jobEntry.queuePosition ?? null,
+        queuePosition: msg.queuePosition ?? entry.queuePosition ?? null,
       });
 
       // Si el modal de este item sigue abierto, reflejar el progreso ahí también.
       const modal = this.modalForJob(jobId);
       if (modal) {
-        modal.progress = { ...modal.progress, ...jobEntry };
+        modal.progress = { ...modal.progress, ...entry };
         if (msg.seed !== undefined && msg.seed !== null) modal.draft.seed = msg.seed;
       }
 
       if (msg.status === 'done') {
-        jobEntry.outputPath = msg.outputPath;
-        jobEntry.stamp = Date.now();
+        entry.outputPath = msg.outputPath;
+        entry.stamp = Date.now();
         if (modal) {
           modal.progress.outputPath = msg.outputPath;
-          modal.progress.stamp = jobEntry.stamp;
+          modal.progress.stamp = entry.stamp;
           modal.busy = false;
         }
         this.removeActiveJob(jobId);
-        this.finishJob({ ...jobEntry, status: 'done', percent: 100 });
+        this.finishJob({ ...entry, status: 'done', percent: 100 });
         this.refreshDetail();
         this.invalidateGallery();
         this.loadCharacters();
-        this.toast(this.t('toast.generationDone', { label: jobEntry.label }), 'ok');
+        this.toast(this.t('toast.generationDone', { label: entry.label }), 'ok');
         return true;
       }
       if (msg.status === 'error' || msg.status === 'cancelled') {
         if (modal) modal.busy = false;
         this.removeActiveJob(jobId);
-        this.finishJob({ ...jobEntry });
+        this.finishJob({ ...entry });
         this.toast(
-          this.t(msg.status === 'error' ? 'toast.generationError' : 'toast.generationCancelled', { label: jobEntry.label }),
+          this.t(msg.status === 'error' ? 'toast.generationError' : 'toast.generationCancelled', { label: entry.label }),
           msg.status === 'error' ? 'err' : ''
         );
         return true;

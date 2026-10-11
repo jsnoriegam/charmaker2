@@ -21,6 +21,7 @@ CharMaker2: SPA + servidor Express que genera personajes de visual novels vía `
 - Variante con consistencia facial = 2 pases (`img_gen` + adetailer/PhotoMaker); requiere `SD_AD_FACE_MODEL` configurada. `identityMethod: none` omite el segundo pase.
 - rembg es un venv de Python opcional: `bash scripts/setup-rembg.sh` (instala y precarga BiRefNet-general). Resolución del binario: `REMBG_BIN` → `.venv/bin/rembg` → PATH.
 - Los inpaints se identifican por `(variant_id, label)` (label `[a-z0-9_-]+`, en minúsculas): `upsertInpaint()` en `db.js` **sobrescribe** al regenerar con el mismo label; renombrar a uno ya usado en la variante da 409.
+- El inpaint hereda de la variante origen sus ajustes de generación (modelo/steps/cfg/sampler/schedule) y puede sobrescribirlos por fila: la ruta usa `resolveGenerationSettings(body, variantRow)` (body manda, si falta cae a la variante).
 - Los modales de base/variante/inpaint marcan `dirty` vía `@input`/`@change` y piden confirmación al cerrar (Guardar/Descartar/Cancelar). El server persiste los settings al aceptar el job, así que el flag se limpia al generar.
 - Imágenes generadas: cache-busting con `imgSrc()`/`assetVersion` en `public/app.js` (la ruta no cambia al regenerar). Los assets del front se sirven con `Cache-Control: no-store`.
 - `SD_STAGES_TTL_HOURS` (default 0) purga `_stages` viejos; los inpaints los usan como fuente preferida (evita aplanar el fondo removido).

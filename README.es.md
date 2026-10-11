@@ -41,7 +41,9 @@ expresión. Todo el material de trabajo vive en **SQLite** y se edita desde la U
   `Clonar` duplica para experimentar sin tocar el original.
 - **Inpaint**: corrección de una región de una variante con `-M adetailer`
   (denoise + prompt propio). Se ancla la identidad con `none`, `prompt`,
-  PhotoMaker o IP-Adapter. El **identificador** que le das es único por variante:
+  PhotoMaker o IP-Adapter. Sus ajustes de generación (modelo, steps, cfg,
+  sampler, schedule) parten de la variante origen pero se pueden sobrescribir
+  por inpaint. El **identificador** que le das es único por variante:
   regenerar con el mismo lo **sobrescribe** (la imagen anterior va a `_history`).
 - **Framings / Accesorios / Prompts globales**: CRUDs propios en el menú.
 - **Preview en vivo**: cada modal muestra el positivo/negativo final que se va a

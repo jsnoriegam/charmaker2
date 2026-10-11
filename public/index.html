@@ -509,6 +509,19 @@
                 <p class="muted small" x-show="!config.identityMethods.photomaker && !config.identityMethods.ipadapter" x-text="t('inpaintModal.modelsNotConfigured')"></p>
               </fieldset>
 
+              <fieldset>
+                <legend x-text="t('common.settings')"></legend>
+                <div class="gen-settings">
+                  <label><span x-text="t('common.steps')"></span> <input type="number" x-model.number="inpaintModal.draft.steps" min="1" max="150"></label>
+                  <label><span x-text="t('common.cfg')"></span> <input type="number" step="0.1" x-model.number="inpaintModal.draft.cfg"></label>
+                  <label><span x-text="t('common.sampler')"></span> <select x-model="inpaintModal.draft.sampler" x-init="$nextTick(() => { $el.value = inpaintModal.draft.sampler; })">
+                    <template x-for="s in samplers"><option :value="s" x-text="s"></option></template>
+                  </select></label>
+                  <label><span x-text="t('common.schedule')"></span> <select x-model="inpaintModal.draft.schedule" x-init="$nextTick(() => { $el.value = inpaintModal.draft.schedule; })"><template x-for="s in schedules"><option :value="s" x-text="s"></option></template></select></label>
+                  <label class="full"><span x-text="t('common.model')"></span> <select x-model="inpaintModal.draft.model" x-init="$nextTick(() => { $el.value = inpaintModal.draft.model; })"><template x-for="m in models"><option :value="m" x-text="m"></option></template></select></label>
+                </div>
+              </fieldset>
+
               <label class="check"><input type="checkbox" x-model="inpaintModal.draft.seedAuto"> <span x-text="t('variantModal.seedAuto')"></span></label>
               <label><span x-text="t('common.seed')"></span> <input type="number" x-model="inpaintModal.draft.seed" :readonly="inpaintModal.draft.seedAuto"></label>
               <label class="check"><input type="checkbox" x-model="inpaintModal.draft.rembg" :disabled="!config.rembg.available"> <span x-text="t('common.rembg')"></span></label>
