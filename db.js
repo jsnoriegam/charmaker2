@@ -32,16 +32,15 @@ export function normSeed(value) {
   return Number.isNaN(n) ? null : n;
 }
 
-// Seeds determinísticos: si una fila queda sin seed (creación sin generar,
-// clon de fila huérfana, PUT con seed vacío), se deriva del personaje y su
-// contexto. Las fórmulas son las mismas que usaba la generación, así que
-// regenerar con los mismos datos reproduce el seed.
+// Seeds de relleno determinísticos: solo se usan cuando una fila queda sin seed
+// fuera de una generación (creación sin generar, clon de fila huérfana, update
+// parcial). La generación con "seed automático" NO usa estas fórmulas: sortea
+// uno nuevo en cada corrida (ver resolveSeed en server/sdcli.js).
 export function baseSeed(charKey, clothing) {
   return fnv1a(`base|${charKey}|${(clothing || '').trim().toLowerCase()}`) % MAX_SEED;
 }
 
-// Variante "auto": depende del personaje y la ropa, no de la expresión — así
-// todas las expresiones de un mismo outfit comparten seed.
+// Relleno estable para variantes sin seed: depende del personaje y la ropa.
 export function variantSeed(charKey, clothing) {
   return fnv1a(`${charKey}|${(clothing || '').trim().toLowerCase()}`) % MAX_SEED;
 }
@@ -102,7 +101,7 @@ export function initDb() {
       accessories TEXT NOT NULL DEFAULT '[]',
       negative_extra TEXT NOT NULL DEFAULT '',
       framing_key TEXT NOT NULL DEFAULT 'three_quarters',
-      method TEXT NOT NULL DEFAULT 'photomaker',
+      identity_method TEXT NOT NULL DEFAULT 'photomaker',
       strength REAL,
       seed INTEGER,
       steps INTEGER NOT NULL,
@@ -135,20 +134,35 @@ export function initDb() {
       model TEXT,
       rembg INTEGER DEFAULT 1,
       image_path TEXT,
-      identity_mode TEXT NOT NULL DEFAULT 'none',
-      identity_strength REAL,
+      identity_method TEXT NOT NULL DEFAULT 'none',
+      strength REAL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
-  // Migración liviana: si la tabla ya existía de una versión anterior, le
-  // faltan las columnas de identidad — se agregan sin tocar filas existentes.
-  const inpaintCols = new Set(db.prepare('PRAGMA table_info(inpaints)').all().map(c => c.name));
-  if (!inpaintCols.has('identity_mode')) {
+  // Migraciones livianas de esquema para DBs creadas por versiones anteriores.
+  // Se basan en PRAGMA table_info y renombran/agregan columnas sin perder datos.
+  const tableCols = (table) => new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));
+
+  const variantCols = tableCols('variants');
+  if (variantCols.has('method') && !variantCols.has('identity_method')) {
+    db.exec('ALTER TABLE variants RENAME COLUMN method TO identity_method');
+  }
+
+  const inpaintCols = tableCols('inpaints');
+  // DBs muy viejas: primero se agregan las columnas de identidad...
+  if (!inpaintCols.has('identity_mode') && !inpaintCols.has('identity_method')) {
     db.exec(`ALTER TABLE inpaints ADD COLUMN identity_mode TEXT NOT NULL DEFAULT 'none'`);
   }
-  if (!inpaintCols.has('identity_strength')) {
+  if (!inpaintCols.has('identity_strength') && !inpaintCols.has('strength')) {
     db.exec('ALTER TABLE inpaints ADD COLUMN identity_strength REAL');
+  }
+  // ...y luego se unifican los nombres (method / identity_method / strength).
+  if (inpaintCols.has('identity_mode') && !inpaintCols.has('identity_method')) {
+    db.exec('ALTER TABLE inpaints RENAME COLUMN identity_mode TO identity_method');
+  }
+  if (inpaintCols.has('identity_strength') && !inpaintCols.has('strength')) {
+    db.exec('ALTER TABLE inpaints RENAME COLUMN identity_strength TO strength');
   }
 
   db.exec(`
@@ -218,11 +232,11 @@ export function initDb() {
 
     getVariantById: db.prepare('SELECT * FROM variants WHERE id = ?'),
     insertVariant: db.prepare(`
-      INSERT INTO variants (character_id, base_id, label, expression, clothing, accessories, negative_extra, framing_key, method, strength, seed, steps, cfg, sampler, schedule, model, width, height, rembg, image_path)
+      INSERT INTO variants (character_id, base_id, label, expression, clothing, accessories, negative_extra, framing_key, identity_method, strength, seed, steps, cfg, sampler, schedule, model, width, height, rembg, image_path)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
     updateVariant: db.prepare(`
-      UPDATE variants SET base_id = ?, label = ?, expression = ?, clothing = ?, accessories = ?, negative_extra = ?, framing_key = ?, method = ?, strength = ?, seed = ?, steps = ?, cfg = ?, sampler = ?, schedule = ?, model = ?, width = ?, height = ?, rembg = ?, image_path = ?
+      UPDATE variants SET base_id = ?, label = ?, expression = ?, clothing = ?, accessories = ?, negative_extra = ?, framing_key = ?, identity_method = ?, strength = ?, seed = ?, steps = ?, cfg = ?, sampler = ?, schedule = ?, model = ?, width = ?, height = ?, rembg = ?, image_path = ?
       WHERE id = ?
     `),
     deleteVariantById: db.prepare('DELETE FROM variants WHERE id = ?'),
@@ -236,11 +250,11 @@ export function initDb() {
     getInpaintById: db.prepare('SELECT * FROM inpaints WHERE id = ?'),
     getInpaintByVariantLabel: db.prepare('SELECT * FROM inpaints WHERE variant_id = ? AND label = ?'),
     insertInpaint: db.prepare(`
-      INSERT INTO inpaints (variant_id, label, region, prompt, negative, denoise, seed, steps, cfg, sampler, schedule, model, rembg, image_path, identity_mode, identity_strength)
+      INSERT INTO inpaints (variant_id, label, region, prompt, negative, denoise, seed, steps, cfg, sampler, schedule, model, rembg, image_path, identity_method, strength)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
     updateInpaint: db.prepare(`
-      UPDATE inpaints SET label = ?, region = ?, prompt = ?, negative = ?, denoise = ?, seed = ?, steps = ?, cfg = ?, sampler = ?, schedule = ?, model = ?, rembg = ?, image_path = ?, identity_mode = ?, identity_strength = ?
+      UPDATE inpaints SET label = ?, region = ?, prompt = ?, negative = ?, denoise = ?, seed = ?, steps = ?, cfg = ?, sampler = ?, schedule = ?, model = ?, rembg = ?, image_path = ?, identity_method = ?, strength = ?
       WHERE id = ?
     `),
     deleteInpaintById: db.prepare('DELETE FROM inpaints WHERE id = ?'),
@@ -469,7 +483,8 @@ export function createVariant({ characterKey, ...d }) {
   const info = stmts.insertVariant.run(
     char.id, baseId, d.label ?? '', d.expression ?? '', d.clothing ?? '',
     JSON.stringify(d.accessories ?? []), d.negativeExtra ?? d.negative_extra ?? '',
-    d.framingKey ?? d.framing_key ?? 'three_quarters', d.method ?? 'photomaker', d.strength ?? null,
+    d.framingKey ?? d.framing_key ?? 'three_quarters',
+    d.identityMethod ?? d.identity_method ?? d.method ?? 'photomaker', d.strength ?? null,
     normSeed(d.seed) ?? variantSeed(char.key, d.clothing ?? ''), d.steps, d.cfg, d.sampler, d.schedule, d.model,
     d.width ?? null, d.height ?? null, d.rembg === false ? 0 : 1, d.imagePath ?? d.image_path ?? null
   );
@@ -496,7 +511,7 @@ export function updateVariant(id, d) {
     d.accessories === undefined ? row.accessories : JSON.stringify(d.accessories),
     d.negativeExtra ?? d.negative_extra ?? row.negative_extra,
     d.framingKey ?? d.framing_key ?? row.framing_key,
-    d.method ?? row.method, d.strength ?? row.strength,
+    d.identityMethod ?? d.identity_method ?? d.method ?? row.identity_method, d.strength ?? row.strength,
     normSeed(d.seed) ?? normSeed(row.seed) ?? variantSeed(charKey, clothing),
     d.steps ?? row.steps, d.cfg ?? row.cfg, d.sampler ?? row.sampler,
     d.schedule ?? row.schedule, d.model ?? row.model,
@@ -512,10 +527,10 @@ export function cloneVariant(id) {
   const row = getVariantRow(id);
   if (!row) return null;
   const info = db.prepare(`
-    INSERT INTO variants (character_id, base_id, label, expression, clothing, accessories, negative_extra, framing_key, method, strength, seed, steps, cfg, sampler, schedule, model, width, height, rembg, image_path)
+    INSERT INTO variants (character_id, base_id, label, expression, clothing, accessories, negative_extra, framing_key, identity_method, strength, seed, steps, cfg, sampler, schedule, model, width, height, rembg, image_path)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(row.character_id, row.base_id, row.label, row.expression, row.clothing, row.accessories,
-    row.negative_extra, row.framing_key, row.method, row.strength,
+    row.negative_extra, row.framing_key, row.identity_method, row.strength,
     normSeed(row.seed) ?? variantSeed(getCharacterRow(row.character_id)?.key ?? '', row.clothing),
     row.steps, row.cfg, row.sampler, row.schedule, row.model, row.width, row.height, row.rembg, row.image_path);
   return hydrateVariant(getVariantRow(Number(info.lastInsertRowid)));
@@ -566,8 +581,8 @@ export function createInpaint(d) {
     d.schedule ?? null, d.model ?? null,
     d.rembg === false ? 0 : 1,
     d.imagePath ?? d.image_path ?? null,
-    d.identityMode ?? d.identity_mode ?? 'none',
-    d.identityStrength ?? d.identity_strength ?? null
+    d.identityMethod ?? d.identity_method ?? d.identityMode ?? d.identity_mode ?? 'none',
+    d.strength ?? d.identityStrength ?? d.identity_strength ?? null
   );
   return hydrateInpaint(stmts.getInpaintById.get(Number(info.lastInsertRowid)));
 }
@@ -608,8 +623,8 @@ export function updateInpaint(id, d) {
     d.schedule ?? row.schedule, d.model ?? row.model,
     d.rembg === undefined ? row.rembg : (d.rembg ? 1 : 0),
     d.imagePath ?? d.image_path ?? row.image_path,
-    d.identityMode ?? d.identity_mode ?? row.identity_mode,
-    d.identityStrength ?? d.identity_strength ?? row.identity_strength,
+    d.identityMethod ?? d.identity_method ?? d.identityMode ?? d.identity_mode ?? row.identity_method,
+    d.strength ?? d.identityStrength ?? d.identity_strength ?? row.strength,
     id
   );
   return hydrateInpaint(stmts.getInpaintById.get(id));

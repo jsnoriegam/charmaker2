@@ -5,7 +5,6 @@ import {
   getCharacterRow, getBaseRow, getVariantRow,
   createBase, updateBase, createVariant, updateVariant,
   upsertInpaint, getInpaintByVariantLabel,
-  normSeed, inpaintSeed,
 } from '../../db.js';
 import {
   MODEL_DIR, PROJECT_ROOT, WIDTH, HEIGHT, ALLOWED_SIZES,
@@ -14,15 +13,15 @@ import {
 import { httpError, itemDirs } from '../util.js';
 import { promptData, buildPromptLayers, previewFor, draftFromBase, draftFromVariant, withIdentityPrompt } from '../prompts.js';
 import { jobs, jobEvents, nextJobId, enqueueJob, cancelJob, getQueue, findActiveJob } from '../jobs.js';
-import { resolveGenerationSettings, resolveSeed, resolveVariantSeed, inpaintRegionModel } from '../sdcli.js';
+import { resolveGenerationSettings, resolveSeed, inpaintRegionModel } from '../sdcli.js';
 import { runBaseGeneration } from '../pipeline/base.js';
 import { runVariantGeneration } from '../pipeline/variant.js';
 import { runInpaintGeneration } from '../pipeline/inpaint.js';
 
 const router = Router();
 
-function badRequest(res, message) {
-  return res.status(400).json({ error: message });
+function badRequest(res, key, params) {
+  return res.status(400).json({ error: key, params });
 }
 
 // ---------------------------------------------------------------------------
@@ -32,16 +31,16 @@ function badRequest(res, message) {
 router.post('/generate-base', (req, res) => {
   const body = req.body;
   const char = getCharacterRow(body.character);
-  if (!char) return badRequest(res, `Unknown character: ${body.character}`);
+  if (!char) return badRequest(res, 'errors.unknownCharacter', { key: body.character });
 
   let row = null;
   if (body.baseId) {
     row = getBaseRow(parseInt(body.baseId, 10));
-    if (!row) return badRequest(res, `Base no encontrada: ${body.baseId}`);
-    if (row.character_id !== char.id) return badRequest(res, 'La base no pertenece a ese personaje');
+    if (!row) return badRequest(res, 'errors.baseNotFoundId', { id: body.baseId });
+    if (row.character_id !== char.id) return badRequest(res, 'errors.baseNotOfCharacter');
     const active = findActiveJob('base', row.id);
     if (active) {
-      return res.status(409).json({ error: `Ya hay una generación en curso para esta base (job ${active.id}).` });
+      return res.status(409).json({ error: 'errors.generationInProgressBase', params: { id: active.id } });
     }
   }
 
@@ -49,21 +48,21 @@ router.post('/generate-base', (req, res) => {
   try {
     settings = resolveGenerationSettings(body, row);
   } catch (e) {
-    return res.status(e.statusCode || 400).json({ error: e.message });
+    return res.status(e.statusCode || 400).json({ error: e.i18nKey || e.message, params: e.i18nParams });
   }
 
   const modelPath = join(MODEL_DIR, settings.modelFile);
   if (!existsSync(modelPath)) {
-    return badRequest(res, `Model not found: ${modelPath}`);
+    return badRequest(res, 'errors.modelNotFound', { path: modelPath });
   }
 
   let draft;
   try {
     draft = draftFromBase(body, row);
-    if (!promptData().FRAMINGS[draft.framingKey]) throw httpError(400, `Framing no encontrado: ${draft.framingKey}`);
+    if (!promptData().FRAMINGS[draft.framingKey]) throw httpError(400, 'errors.framingNotFound', { key: draft.framingKey });
     previewFor(draft);
   } catch (e) {
-    return res.status(e.statusCode || 400).json({ error: e.message });
+    return res.status(e.statusCode || 400).json({ error: e.i18nKey || e.message, params: e.i18nParams });
   }
 
   const resolvedSeed = resolveSeed(body);
@@ -90,7 +89,7 @@ router.post('/generate-base', (req, res) => {
     status: 'pending',
     cancelled: false,
     currentProc: null,
-    progress: { currentStep: 0, totalSteps: settings.steps, percent: 0, stage: 'Generando base...' },
+    progress: { currentStep: 0, totalSteps: settings.steps, percent: 0, stage: 'stages.base' },
     character: char.key,
     seed: resolvedSeed,
     createdAt: new Date().toISOString(),
@@ -109,29 +108,29 @@ router.post('/generate-base', (req, res) => {
 router.post('/generate-variant', (req, res) => {
   const body = req.body;
   const char = getCharacterRow(body.character);
-  if (!char) return badRequest(res, `Unknown character: ${body.character}`);
+  if (!char) return badRequest(res, 'errors.unknownCharacter', { key: body.character });
 
   let row = null;
   if (body.variantId) {
     row = getVariantRow(parseInt(body.variantId, 10));
-    if (!row) return badRequest(res, `Variante no encontrada: ${body.variantId}`);
-    if (row.character_id !== char.id) return badRequest(res, 'La variante no pertenece a ese personaje');
+    if (!row) return badRequest(res, 'errors.variantNotFoundId', { id: body.variantId });
+    if (row.character_id !== char.id) return badRequest(res, 'errors.variantNotOfCharacter');
     const active = findActiveJob('variant', row.id);
     if (active) {
-      return res.status(409).json({ error: `Ya hay una generación en curso para esta variante (job ${active.id}).` });
+      return res.status(409).json({ error: 'errors.generationInProgressVariant', params: { id: active.id } });
     }
   }
 
   const baseId = body.baseId ?? row?.base_id;
   const base = baseId ? getBaseRow(parseInt(baseId, 10)) : null;
-  if (!base) return badRequest(res, 'Variante requiere una base (baseId). Generá una base primero.');
-  if (base.character_id !== char.id) return badRequest(res, 'La base no pertenece a ese personaje');
+  if (!base) return badRequest(res, 'errors.variantRequiresBase');
+  if (base.character_id !== char.id) return badRequest(res, 'errors.baseNotOfCharacter');
 
   let settings;
   try {
     settings = resolveGenerationSettings(body, row);
   } catch (e) {
-    return res.status(e.statusCode || 400).json({ error: e.message });
+    return res.status(e.statusCode || 400).json({ error: e.i18nKey || e.message, params: e.i18nParams });
   }
 
   let resolvedWidth = WIDTH;
@@ -139,7 +138,7 @@ router.post('/generate-variant', (req, res) => {
   if (body.width !== undefined || body.height !== undefined) {
     const sizeKey = `${body.width}x${body.height}`;
     if (!ALLOWED_SIZES.has(sizeKey)) {
-      return badRequest(res, `Tamaño no soportado: ${sizeKey}`);
+      return badRequest(res, 'errors.sizeUnsupported', { size: sizeKey });
     }
     resolvedWidth = body.width;
     resolvedHeight = body.height;
@@ -150,23 +149,23 @@ router.post('/generate-variant', (req, res) => {
 
   const modelPath = join(MODEL_DIR, settings.modelFile);
   if (!existsSync(modelPath)) {
-    return badRequest(res, `Model not found: ${modelPath}`);
+    return badRequest(res, 'errors.modelNotFound', { path: modelPath });
   }
 
-  const method = body.method ?? row?.method ?? 'none';
-  if (!['none', 'photomaker', 'ipadapter'].includes(method)) {
-    return badRequest(res, `Method desconocido: ${method}`);
+  const identityMethod = body.identityMethod ?? body.identity_method ?? body.method ?? row?.identity_method ?? 'none';
+  if (!['none', 'photomaker', 'ipadapter'].includes(identityMethod)) {
+    return badRequest(res, 'errors.methodUnknown', { method: identityMethod });
   }
-  const usePhotoMaker = method === 'photomaker';
-  const useIpAdapter = method === 'ipadapter';
+  const usePhotoMaker = identityMethod === 'photomaker';
+  const useIpAdapter = identityMethod === 'ipadapter';
   if ((usePhotoMaker || useIpAdapter) && !FACE_DETECT_MODEL) {
-    return badRequest(res, 'PhotoMaker/IP-Adapter requieren SD_AD_FACE_MODEL configurado en .env');
+    return badRequest(res, 'errors.photomakerFaceModelMissing');
   }
   if (usePhotoMaker && !process.env.SD_PHOTOMAKER_PATH) {
-    return badRequest(res, 'PhotoMaker requiere SD_PHOTOMAKER_PATH configurado en .env');
+    return badRequest(res, 'errors.photomakerPathMissing');
   }
   if (useIpAdapter && (!process.env.SD_IP_ADAPTER_PATH || !process.env.SD_CLIP_VISION_PATH)) {
-    return badRequest(res, 'IP-Adapter requiere SD_IP_ADAPTER_PATH y SD_CLIP_VISION_PATH en .env');
+    return badRequest(res, 'errors.ipadapterPathMissing');
   }
 
   let draft;
@@ -174,26 +173,29 @@ router.post('/generate-variant', (req, res) => {
     draft = draftFromVariant(body, row);
     previewFor(draft);
   } catch (e) {
-    return res.status(e.statusCode || 400).json({ error: e.message });
+    return res.status(e.statusCode || 400).json({ error: e.i18nKey || e.message, params: e.i18nParams });
   }
 
   const pmStyleStrength = body.strength ?? row?.strength ?? undefined;
+  const strengthLabel = useIpAdapter ? 'IP-Adapter' : 'PhotoMaker';
   if ((usePhotoMaker || useIpAdapter) && (pmStyleStrength === undefined || pmStyleStrength === null || pmStyleStrength === '')) {
-    return badRequest(res, `${useIpAdapter ? 'IP-Adapter' : 'PhotoMaker'}: strength es obligatorio.`);
+    return badRequest(res, 'errors.strengthRequired', { label: strengthLabel });
   }
   if (usePhotoMaker || useIpAdapter) {
     const s = parseFloat(pmStyleStrength);
     if (Number.isNaN(s)) {
-      return badRequest(res, 'Strength inválido.');
+      return badRequest(res, 'errors.strengthInvalid');
     }
     if (useIpAdapter && !(s > 0 && s <= 1)) {
-      return badRequest(res, 'IP-Adapter: strength debe ser mayor que 0 y hasta 1.');
+      return badRequest(res, 'errors.ipadapterRange');
     }
     if (usePhotoMaker && !(s > 0 && s <= 100)) {
-      return badRequest(res, 'PhotoMaker: strength debe ser mayor que 0 y hasta 100.');
+      return badRequest(res, 'errors.photomakerRange');
     }
   }
-  const resolvedSeed = resolveVariantSeed(body, char.key, draft.clothing);
+  // "Seed automático": seed nuevo (aleatorio) en cada generación; si el modal
+  // trae un seed explícito, se respeta tal cual.
+  const resolvedSeed = resolveSeed(body);
 
   const itemFields = {
     baseId: base.id,
@@ -203,7 +205,7 @@ router.post('/generate-variant', (req, res) => {
     accessories: draft.accessories,
     negativeExtra: draft.negativeExtra,
     framingKey: draft.framingKey,
-    method,
+    identityMethod,
     strength: pmStyleStrength,
     seed: resolvedSeed,
     ...settings,
@@ -237,7 +239,7 @@ router.post('/generate-variant', (req, res) => {
 
   enqueueJob(() => runVariantGeneration({
     job, char, row, base, settings, resolvedSeed, draft, body, modelPath,
-    method, usePhotoMaker, useIpAdapter, pmStyleStrength, resolvedWidth, resolvedHeight,
+    identityMethod, usePhotoMaker, useIpAdapter, pmStyleStrength, resolvedWidth, resolvedHeight,
   }), jobId);
 });
 
@@ -249,28 +251,28 @@ router.post('/inpaint-variant', (req, res) => {
   const body = req.body;
   const variantId = parseInt(body.variantId, 10);
   const variantRow = Number.isFinite(variantId) ? getVariantRow(variantId) : null;
-  if (!variantRow) return badRequest(res, 'Variante no encontrada');
+  if (!variantRow) return badRequest(res, 'errors.variantNotFound');
   const char = getCharacterRow(variantRow.character_id);
-  if (!char) return badRequest(res, 'Personaje no encontrado');
+  if (!char) return badRequest(res, 'errors.characterNotFound');
 
   const label = String(body.label ?? '').trim().toLowerCase();
-  if (!label) return badRequest(res, 'El identificador es obligatorio (se añade al nombre de la variante).');
-  if (!/^[a-z0-9_-]+$/.test(label)) return badRequest(res, 'Identificador inválido: solo letras, números, _ y -.');
+  if (!label) return badRequest(res, 'errors.identifierRequiredLong');
+  if (!/^[a-z0-9_-]+$/.test(label)) return badRequest(res, 'errors.identifierInvalid');
 
   const region = body.region || 'face';
-  if (!INPAINT_REGIONS[region]) return badRequest(res, `Región desconocida: ${region}`);
+  if (!INPAINT_REGIONS[region]) return badRequest(res, 'errors.regionUnknown', { region });
   const adModel = inpaintRegionModel(region);
   if (!adModel) {
-    return badRequest(res, `La región ${INPAINT_REGIONS[region].label.toLowerCase()} requiere ${INPAINT_REGIONS[region].modelKey} configurado en .env.`);
+    return badRequest(res, 'errors.regionModelMissing', { region, model: INPAINT_REGIONS[region].modelKey });
   }
 
   let prompt = String(body.prompt ?? '').trim();
-  if (!prompt) return badRequest(res, 'El prompt de inpainting es obligatorio.');
+  if (!prompt) return badRequest(res, 'errors.promptRequired');
   let negative = String(body.negative ?? '').trim();
 
   const denoise = parseFloat(body.denoise);
   if (!Number.isFinite(denoise) || denoise < 0.05 || denoise > 0.95) {
-    return badRequest(res, 'La intensidad (denoise) debe estar entre 0.05 y 0.95.');
+    return badRequest(res, 'errors.denoiseRange');
   }
 
   // Anclaje de identidad para el rostro regenerado:
@@ -278,45 +280,45 @@ router.post('/inpaint-variant', (req, res) => {
   //   'prompt'     → antepone identity/face/hair del personaje al ad-prompt.
   //   'photomaker' → misma técnica que el pase de identidad de variantes.
   //   'ipadapter'  → ídem, vía IP-Adapter.
-  const identityMode = body.identityMode ?? 'none';
-  if (!['none', 'prompt', 'photomaker', 'ipadapter'].includes(identityMode)) {
-    return badRequest(res, `Modo de identidad desconocido: ${identityMode}`);
+  const identityMethod = body.identityMethod ?? body.identity_method ?? body.identityMode ?? body.identity_mode ?? 'none';
+  if (!['none', 'prompt', 'photomaker', 'ipadapter'].includes(identityMethod)) {
+    return badRequest(res, 'errors.methodUnknown', { method: identityMethod });
   }
-  if (identityMode === 'photomaker' && !(process.env.SD_PHOTOMAKER_PATH && FACE_DETECT_MODEL)) {
-    return badRequest(res, 'PhotoMaker requiere SD_PHOTOMAKER_PATH y SD_AD_FACE_MODEL configurados en .env');
+  if (identityMethod === 'photomaker' && !(process.env.SD_PHOTOMAKER_PATH && FACE_DETECT_MODEL)) {
+    return badRequest(res, 'errors.photomakerConfig');
   }
-  if (identityMode === 'ipadapter' && !(process.env.SD_IP_ADAPTER_PATH && process.env.SD_CLIP_VISION_PATH && FACE_DETECT_MODEL)) {
-    return badRequest(res, 'IP-Adapter requiere SD_IP_ADAPTER_PATH, SD_CLIP_VISION_PATH y SD_AD_FACE_MODEL configurados en .env');
-  }
-
-  let identityStrength = null;
-  if (identityMode === 'photomaker' || identityMode === 'ipadapter') {
-    identityStrength = parseFloat(body.identityStrength);
-    if (Number.isNaN(identityStrength)) return badRequest(res, 'Strength de identidad inválido.');
-    if (identityMode === 'ipadapter' && !(identityStrength > 0 && identityStrength <= 1)) {
-      return badRequest(res, 'IP-Adapter: strength debe ser mayor que 0 y hasta 1.');
-    }
-    if (identityMode === 'photomaker' && !(identityStrength > 0 && identityStrength <= 100)) {
-      return badRequest(res, 'PhotoMaker: strength debe ser mayor que 0 y hasta 100.');
-    }
+  if (identityMethod === 'ipadapter' && !(process.env.SD_IP_ADAPTER_PATH && process.env.SD_CLIP_VISION_PATH && FACE_DETECT_MODEL)) {
+    return badRequest(res, 'errors.ipadapterConfig');
   }
 
-  // El modo 'prompt' no necesita la base ni sharp: la identidad se antepone
+  let strength = null;
+  if (identityMethod === 'photomaker' || identityMethod === 'ipadapter') {
+    strength = parseFloat(body.strength ?? body.identityStrength);
+    if (Number.isNaN(strength)) return badRequest(res, 'errors.strengthInvalid');
+    if (identityMethod === 'ipadapter' && !(strength > 0 && strength <= 1)) {
+      return badRequest(res, 'errors.ipadapterRange');
+    }
+    if (identityMethod === 'photomaker' && !(strength > 0 && strength <= 100)) {
+      return badRequest(res, 'errors.photomakerRange');
+    }
+  }
+
+  // El método 'prompt' no necesita la base ni sharp: la identidad se antepone
   // solo al generar. En la fila se guarda lo escrito en el formulario — si se
   // guardara ya concatenado, al reabrir y volver a generar se antepondría dos veces.
   let adPrompt = prompt;
   let adNegative = negative;
-  if (identityMode === 'prompt') {
+  if (identityMethod === 'prompt') {
     ({ positive: adPrompt, negative: adNegative } = withIdentityPrompt(char, prompt, negative));
   }
 
   // photomaker/ipadapter necesitan una base con imagen generada, de donde sale
   // la referencia facial (igual que el pase de identidad de variantes).
   let identityBase = null;
-  if (identityMode === 'photomaker' || identityMode === 'ipadapter') {
+  if (identityMethod === 'photomaker' || identityMethod === 'ipadapter') {
     identityBase = variantRow.base_id ? getBaseRow(variantRow.base_id) : null;
     if (!identityBase || !identityBase.image_path || !existsSync(join(PROJECT_ROOT, identityBase.image_path))) {
-      return badRequest(res, 'La base del personaje todavía no tiene imagen generada — hace falta para anclar la identidad.');
+      return badRequest(res, 'errors.baseNoImage');
     }
   }
 
@@ -324,17 +326,17 @@ router.post('/inpaint-variant', (req, res) => {
   try {
     settings = resolveGenerationSettings({}, variantRow);
   } catch (e) {
-    return res.status(e.statusCode || 400).json({ error: e.message });
+    return res.status(e.statusCode || 400).json({ error: e.i18nKey || e.message, params: e.i18nParams });
   }
   const modelPath = join(MODEL_DIR, settings.modelFile);
-  if (!existsSync(modelPath)) return badRequest(res, `Model not found: ${modelPath}`);
+  if (!existsSync(modelPath)) return badRequest(res, 'errors.modelNotFound', { path: modelPath });
 
   const { stagesDir } = itemDirs(char.key);
   let scenePrompt;
   try {
     scenePrompt = buildPromptLayers(draftFromVariant({ character: char.key }, variantRow));
   } catch (e) {
-    return res.status(e.statusCode || 400).json({ error: e.message });
+    return res.status(e.statusCode || 400).json({ error: e.i18nKey || e.message, params: e.i18nParams });
   }
 
   // Fuente con fondo: raw (pase de identidad) > scene (pase principal) > final aplanada.
@@ -345,11 +347,12 @@ router.post('/inpaint-variant', (req, res) => {
   let sourceNote = null;
   if (!sourcePath && variantRow.image_path && existsSync(join(PROJECT_ROOT, variantRow.image_path))) {
     sourcePath = join(PROJECT_ROOT, variantRow.image_path);
-    sourceNote = 'Usando la imagen final (si tenía fondo removido, se aplanará sobre blanco).';
+    sourceNote = 'stages.sourceNote';
   }
-  if (!sourcePath) return badRequest(res, 'La variante origen todavía no tiene imagen generada.');
+  if (!sourcePath) return badRequest(res, 'errors.variantNoImage');
 
-  const seed = normSeed(body.seed) ?? inpaintSeed(char.key, variantId, label);
+  // Igual que base/variante: seed explícito o uno nuevo aleatorio.
+  const seed = resolveSeed(body);
 
   // El identificador es único por variante: regenerar con el mismo label
   // sobrescribe el inpaint existente (misma fila, misma imagen en disco) en
@@ -358,7 +361,7 @@ router.post('/inpaint-variant', (req, res) => {
   if (existing) {
     const active = findActiveJob('inpaint', existing.id);
     if (active) {
-      return res.status(409).json({ error: `Ya hay una generación en curso para este inpaint (job ${active.id}).` });
+      return res.status(409).json({ error: 'errors.generationInProgressInpaint', params: { id: active.id } });
     }
   }
 
@@ -375,8 +378,8 @@ router.post('/inpaint-variant', (req, res) => {
     schedule: settings.schedule,
     model: settings.model,
     rembg: body.rembg !== false,
-    identityMode,
-    identityStrength,
+    identityMethod,
+    strength,
   };
   const { row } = upsertInpaint({ variantId, ...inpaintFields });
 
@@ -400,7 +403,7 @@ router.post('/inpaint-variant', (req, res) => {
 
   enqueueJob(() => runInpaintGeneration({
     job, char, row, settings, seed, adModel, adPrompt, adNegative, denoise,
-    identityMode, identityStrength, identityBase, scenePrompt, sourcePath, modelPath, body,
+    identityMethod, strength, identityBase, scenePrompt, sourcePath, modelPath, body,
   }), jobId);
 });
 
@@ -421,7 +424,7 @@ router.get('/jobs', (req, res) => {
 
 router.get('/generate/:id', (req, res) => {
   const job = jobs.get(parseInt(req.params.id, 10));
-  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (!job) return res.status(404).json({ error: 'errors.jobNotFound' });
   const { currentProc, ...jobData } = job;
   res.json(jobData);
 });
@@ -435,7 +438,7 @@ router.post('/generate/:id/cancel', (req, res) => {
 router.get('/generate/:id/stream', (req, res) => {
   const jobId = parseInt(req.params.id, 10);
   const job = jobs.get(jobId);
-  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (!job) return res.status(404).json({ error: 'errors.jobNotFound' });
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',

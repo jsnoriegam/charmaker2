@@ -120,7 +120,7 @@ export function runSeed(mod, { defaultModel = 'zavychromaxl_v100.safetensors' } 
         accessories: [],
         negativeExtra: [neutral.negative, outfit.negative].filter(Boolean).join(', '),
         framingKey: 'three_quarters',
-        method: 'photomaker',
+        identityMethod: 'photomaker',
         strength: null,
         seed: null,
         ...DEFAULT_GEN,

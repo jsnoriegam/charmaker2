@@ -18,7 +18,7 @@ router.get('/', crud(() => listCharacters()));
 // Descarga todas las imágenes generadas del personaje en un .zip.
 router.get('/:key/bundle', (req, res) => {
   const char = getCharacterRow(req.params.key);
-  if (!char) return res.status(404).json({ error: 'Personaje no encontrado' });
+  if (!char) return res.status(404).json({ error: 'errors.characterNotFound' });
 
   const key = char.key;
   const withFile = (row) => row.image_path && existsSync(join(PROJECT_ROOT, row.image_path));
@@ -28,7 +28,7 @@ router.get('/:key/bundle', (req, res) => {
   const inpaints = listInpaints(key).filter(withFile);
 
   if (!bases.length && !variantsWithImage.length && !inpaints.length) {
-    return res.status(404).json({ error: 'El personaje no tiene imágenes generadas.' });
+    return res.status(404).json({ error: 'errors.noImages' });
   }
 
   const variantLabels = new Map(variants.map(v => [v.id, v.label]));
@@ -40,21 +40,21 @@ router.get('/:key/bundle', (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="charmaker2_${sanitizeName(key)}.zip"`);
   streamZip(res, entries).catch((err) => {
     console.error('Error generando bundle:', err);
-    if (!res.headersSent) res.status(500).json({ error: err.message });
+    if (!res.headersSent) res.status(500).json({ error: err.i18nKey || err.message, params: err.i18nParams });
     else res.destroy();
   });
 });
 
 router.get('/:key', crud((req) => {
   const row = getCharacterRow(req.params.key);
-  if (!row) throw httpError(404, 'Personaje no encontrado');
+  if (!row) throw httpError(404, 'errors.characterNotFound');
   return row;
 }));
 
 router.post('/', crud((req, res) => {
   const { key } = req.body;
-  if (!key || !KEY_PATTERN.test(key)) throw httpError(400, 'Clave inválida: minúsculas, dígitos o _ (empezar con letra)');
-  if (getCharacterRow(key)) throw httpError(409, `Ya existe un personaje con la clave "${key}"`);
+  if (!key || !KEY_PATTERN.test(key)) throw httpError(400, 'errors.invalidKey');
+  if (getCharacterRow(key)) throw httpError(409, 'errors.characterKeyExists', { key });
   const created = saveCharacter(key, req.body);
   invalidatePromptData();
   res.status(201);
@@ -63,7 +63,7 @@ router.post('/', crud((req, res) => {
 
 router.put('/:key', crud((req) => {
   const existing = getCharacterRow(req.params.key);
-  if (!existing) throw httpError(404, 'Personaje no encontrado');
+  if (!existing) throw httpError(404, 'errors.characterNotFound');
   const oldKey = existing.key;
   const targetKey = (req.body.key && req.body.key !== req.params.key) ? req.body.key : req.params.key;
   const renaming = targetKey !== oldKey;
@@ -74,7 +74,7 @@ router.put('/:key', crud((req) => {
   // Validamos el estado en disco ANTES de tocar la DB: si la carpeta destino
   // ya existe, abortamos sin dejar la key cambiada y las imágenes rotas.
   if (renaming && existsSync(oldDir) && existsSync(newDir)) {
-    throw httpError(409, `Ya existe una carpeta generated/${targetKey}/ — no se puede renombrar sin perder imágenes. Movela o borrala primero.`);
+    throw httpError(409, 'errors.folderExists', { key: targetKey });
   }
 
   const updated = saveCharacter(req.params.key, req.body);
@@ -87,7 +87,7 @@ router.put('/:key', crud((req) => {
       // Rollback de la key para no dejar la DB apuntando a una carpeta que no existe.
       saveCharacter(updated.key, { ...existing, key: oldKey });
       invalidatePromptData();
-      throw httpError(500, `No se pudo renombrar generated/${oldKey}/: ${err.message}`);
+      throw httpError(500, 'errors.renameFailed', { key: oldKey, msg: err.message });
     }
   }
 
@@ -115,7 +115,7 @@ router.put('/:key', crud((req) => {
 }));
 
 router.delete('/:key', crud((req) => {
-  if (!deleteCharacter(req.params.key)) throw httpError(404, 'Personaje no encontrado');
+  if (!deleteCharacter(req.params.key)) throw httpError(404, 'errors.characterNotFound');
   invalidatePromptData();
   // Borra la carpeta del personaje y sus refs de identidad huérfanas.
   cleanupOrphanImages(listCharacters().map(c => c.key));

@@ -9,8 +9,6 @@ import {
 } from './config.js';
 import { httpError } from './util.js';
 import { emitJobUpdate } from './jobs.js';
-import { normSeed, variantSeed } from '../db.js';
-
 const SAMPLER_MAP = {
   // alias históricos (formato ComfyUI) usados en filas / seed viejos
   dpmpp_2m_sde: 'dpm++2m_sde',
@@ -97,7 +95,7 @@ export async function initSamplerOptions() {
 export function resolveSampler(rawSampler) {
   if (rawSampler in SAMPLER_MAP) return SAMPLER_MAP[rawSampler];
   if (SD_CPP_SAMPLERS.has(rawSampler)) return rawSampler;
-  throw new Error(`Sampler desconocido "${rawSampler}".`);
+  throw httpError(400, 'errors.samplerUnknown', { name: rawSampler });
 }
 
 export function resolveGenerationSettings(body, row) {
@@ -105,12 +103,12 @@ export function resolveGenerationSettings(body, row) {
   try {
     mappedSampler = resolveSampler(body.sampler || row?.sampler || DEFAULT_SAMPLER);
   } catch (e) {
-    throw httpError(400, e.message);
+    throw httpError(400, e.i18nKey || e.message, e.i18nParams);
   }
   const modelFile = body.model || row?.model || DEFAULT_MODEL_FILE;
   const schedule = body.schedule || row?.schedule || DEFAULT_SCHEDULE;
   if (!SCHEDULE_OPTIONS.includes(schedule)) {
-    throw httpError(400, `Scheduler desconocido "${schedule}".`);
+    throw httpError(400, 'errors.scheduleUnknown', { schedule });
   }
   // shape de fila DB (createBase/createVariant/updateBase/updateVariant)
   return {
@@ -127,14 +125,6 @@ export function resolveSeed(body) {
   return body.seed !== null && body.seed !== undefined && body.seed !== ''
     ? parseInt(body.seed, 10)
     : Math.floor(Math.random() * 2147483647);
-}
-
-// Seed determinístico para variantes "auto": depende del personaje y la ropa,
-// no de la expresión — así todas las expresiones de un mismo outfit comparten
-// seed y solo cambia el prompt de expresión.
-export function resolveVariantSeed(body, charKey, clothing) {
-  const explicit = normSeed(body.seed);
-  return explicit ?? variantSeed(charKey, clothing);
 }
 
 export function commonSdArgs() {
@@ -157,7 +147,7 @@ export function buildFacePassArgs({ modelPath, inputImagePath, outputPath, posit
   usePhotoMaker, photoMakerModel, pmIdImagesDir, pmStyleStrength,
   useIpAdapter, ipAdapterModel, clipVisionModel, ipAdapterRefPath, ipAdapterStrength }) {
   if (!FACE_DETECT_MODEL) {
-    throw new Error('SD_AD_FACE_MODEL no está configurado en .env — requerido para PhotoMaker/IP-Adapter.');
+    throw httpError(400, 'errors.faceModelMissing');
   }
 
   const args = [
@@ -235,7 +225,8 @@ export function runSdCli(args, job, { timeoutMs = GENERATION_TIMEOUT_MS } = {}) 
       if (genMatch) {
         generateImageCount++;
         const [, w, h] = genMatch;
-        job.progress.stage = generateImageCount === 1 ? 'Generación principal' : `Pase de cara — imagen #${generateImageCount}`;
+        job.progress.stage = generateImageCount === 1 ? 'stages.main' : 'stages.facePass';
+        job.progress.stageParams = generateImageCount === 1 ? null : { n: generateImageCount };
         job.progress.resolution = `${w}x${h}`;
         changed = true;
       }

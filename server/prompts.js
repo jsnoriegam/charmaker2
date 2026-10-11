@@ -42,18 +42,18 @@ export function buildPromptLayers(draft) {
   const { CHARACTERS, ACCESSORIES, FRAMINGS, GLOBAL_POSITIVE, GLOBAL_NEGATIVE } = promptData();
 
   const char = CHARACTERS[draft.character];
-  if (!char) throw httpError(400, `Personaje no encontrado: ${draft.character}`);
+  if (!char) throw httpError(400, 'errors.characterNotFoundNamed', { key: draft.character });
 
   const framing = FRAMINGS[draft.framingKey || (draft.type === 'base' ? 'portrait' : 'three_quarters')];
-  if (!framing) throw httpError(400, `Framing no encontrado: ${draft.framingKey}`);
+  if (!framing) throw httpError(400, 'errors.framingNotFound', { key: draft.framingKey });
 
   const accessories = (draft.accessories || []).map(key => {
     const acc = ACCESSORIES[key];
-    if (!acc) throw httpError(400, `Accesorio no encontrado: ${key}`);
+    if (!acc) throw httpError(400, 'errors.accessoryNotFound', { key });
     return acc;
   });
 
-  const usePhotoMaker = draft.type === 'variant' && draft.method === 'photomaker';
+  const usePhotoMaker = draft.type === 'variant' && draft.identityMethod === 'photomaker';
   const identity = usePhotoMaker
     ? char.identity.replace(/^(1girl|1woman|1man|1boy)/, '$1 img')
     : char.identity;
@@ -132,6 +132,6 @@ export function draftFromVariant(body, row = null) {
     negativeExtra: body.negativeExtra ?? body.negative_extra ?? row?.negative_extra ?? '',
     expression: body.expression ?? row?.expression ?? '',
     accessories: body.accessories ?? (row ? JSON.parse(row.accessories || '[]') : []),
-    method: body.method ?? row?.method ?? 'none',
+    identityMethod: body.identityMethod ?? body.identity_method ?? body.method ?? row?.identity_method ?? row?.method ?? 'none',
   };
 }

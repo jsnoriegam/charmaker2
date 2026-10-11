@@ -67,7 +67,7 @@ router.get('/gallery', crud(() => {
         meta: {
           label: v.label, expression: v.expression, clothing: v.clothing,
           accessories: v.accessories, negative_extra: v.negative_extra,
-          framing_key: v.framing_key, method: v.method, strength: v.strength,
+          framing_key: v.framing_key, identity_method: v.identity_method, strength: v.strength,
           seed: v.seed, steps: v.steps, cfg: v.cfg, sampler: v.sampler,
           schedule: v.schedule, model: v.model, width: v.width, height: v.height, rembg: v.rembg,
           base_id: v.base_id,
@@ -94,7 +94,7 @@ router.get('/gallery', crud(() => {
           : null,
         meta: {
           label: ip.label, region: ip.region, prompt: ip.prompt, negative: ip.negative,
-          denoise: ip.denoise, identity_mode: ip.identity_mode, identity_strength: ip.identity_strength,
+          denoise: ip.denoise, identity_method: ip.identity_method, strength: ip.strength,
           seed: ip.seed, steps: ip.steps, cfg: ip.cfg, sampler: ip.sampler,
           schedule: ip.schedule, model: ip.model, rembg: ip.rembg,
           variant_id: ip.variant_id,
@@ -134,7 +134,7 @@ router.get('/gallery/:kind/:id', crud((req) => {
     const key = sourceRow ? getCharacterRow(sourceRow.character_id)?.key : '';
     const scene = sourceRow ? safeLayers(draftFromVariant({ character: key }, sourceRow)) : null;
     let ad = { positive: ip.prompt, negative: ip.negative };
-    if (ip.identity_mode === 'prompt' && key) {
+    if (ip.identity_method === 'prompt' && key) {
       const char = promptData().CHARACTERS[key];
       if (char) ad = withIdentityPrompt(char, ip.prompt, ip.negative);
     }

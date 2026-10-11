@@ -31,7 +31,7 @@ test('buildPromptLayers arma todas las capas', () => {
 
 test('buildPromptLayers con photomaker reescribe la identidad', () => {
   const { positive } = prompts.buildPromptLayers({
-    type: 'variant', character: 'hero', method: 'photomaker', expression: 'smiling',
+    type: 'variant', character: 'hero', identityMethod: 'photomaker', expression: 'smiling',
     framingKey: 'portrait', clothing: '', accessories: [],
   });
   assert.match(positive, /1girl img/);
@@ -39,9 +39,9 @@ test('buildPromptLayers con photomaker reescribe la identidad', () => {
 });
 
 test('buildPromptLayers rechaza personaje/framing/accesorio inexistentes', () => {
-  assert.throws(() => prompts.buildPromptLayers({ type: 'base', character: 'ghost' }), /Personaje no encontrado/);
-  assert.throws(() => prompts.buildPromptLayers({ type: 'base', character: 'hero', framingKey: 'nope' }), /Framing no encontrado/);
-  assert.throws(() => prompts.buildPromptLayers({ type: 'base', character: 'hero', accessories: ['nope'] }), /Accesorio no encontrado/);
+  assert.throws(() => prompts.buildPromptLayers({ type: 'base', character: 'ghost' }), (err) => err.i18nKey === 'errors.characterNotFoundNamed');
+  assert.throws(() => prompts.buildPromptLayers({ type: 'base', character: 'hero', framingKey: 'nope' }), (err) => err.i18nKey === 'errors.framingNotFound');
+  assert.throws(() => prompts.buildPromptLayers({ type: 'base', character: 'hero', accessories: ['nope'] }), (err) => err.i18nKey === 'errors.accessoryNotFound');
 });
 
 test('findConflicts detecta términos en ambos lados (normaliza pesos y loras)', () => {
@@ -58,13 +58,13 @@ test('draftFromBase mapea camelCase y snake_case con defaults', () => {
   assert.equal(prompts.draftFromBase({ negativeExtra: 'zz' }, row).negativeExtra, 'zz');
 });
 
-test('draftFromVariant parsea accessories de la fila y defaultea method none', () => {
-  const row = { character: 'hero', label: 'L', framing_key: 'portrait', clothing: 'c', negative_extra: 'n', expression: 'e', accessories: '["hat"]', method: 'photomaker' };
+test('draftFromVariant parsea accessories de la fila y defaultea identityMethod none', () => {
+  const row = { character: 'hero', label: 'L', framing_key: 'portrait', clothing: 'c', negative_extra: 'n', expression: 'e', accessories: '["hat"]', identity_method: 'photomaker' };
   const d = prompts.draftFromVariant({}, row);
   assert.deepEqual(d.accessories, ['hat']);
-  assert.equal(d.method, 'photomaker');
+  assert.equal(d.identityMethod, 'photomaker');
   assert.deepEqual(prompts.draftFromVariant({ character: 'hero' }).accessories, []);
-  assert.equal(prompts.draftFromVariant({ character: 'hero' }).method, 'none');
+  assert.equal(prompts.draftFromVariant({ character: 'hero' }).identityMethod, 'none');
 });
 
 test('previewFor devuelve positivo/negativo/conflicts', () => {

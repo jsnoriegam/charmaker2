@@ -2,8 +2,14 @@ import { mkdirSync, existsSync, readdirSync, renameSync, rmSync, copyFileSync, s
 import { dirname, join } from 'path';
 import { OUTPUT_DIR, PROJECT_ROOT, HISTORY_KEEP } from './config.js';
 
-export function httpError(status, message) {
-  return Object.assign(new Error(message), { statusCode: status });
+// Error con clave i18n: el front traduce `{ error: key, params }` contra su
+// diccionario. `err.message` queda con la clave (logs internos).
+export function httpError(status, key, params) {
+  const err = new Error(key);
+  err.statusCode = status;
+  err.i18nKey = key;
+  err.i18nParams = params;
+  return err;
 }
 
 export function crud(handler) {
@@ -16,7 +22,7 @@ export function crud(handler) {
       const status = err.statusCode || 500;
       if (status === 500) console.error(err);
       if (res.headersSent) return;
-      res.status(status).json({ error: err.message });
+      res.status(status).json({ error: err.i18nKey || err.message, params: err.i18nParams });
     }
   };
 }

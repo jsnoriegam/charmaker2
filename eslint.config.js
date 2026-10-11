@@ -19,8 +19,8 @@ export default [
     },
   },
   {
-    // app.js es un script clásico: expone app() global para x-data del HTML.
-    files: ['public/app.js'],
+    // app.js / i18n.js son scripts clásicos: exponen app() / i18n en globalThis.
+    files: ['public/app.js', 'public/i18n.js'],
     languageOptions: { sourceType: 'script', globals: { ...globals.browser } },
   },
 ];

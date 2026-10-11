@@ -34,9 +34,9 @@ export function findActiveJob(kind, refId) {
 
 export function cancelJob(jobId) {
   const job = jobs.get(jobId);
-  if (!job) return { ok: false, error: 'Job not found' };
+  if (!job) return { ok: false, error: 'errors.jobNotFound' };
   if (job.status === 'done' || job.status === 'error' || job.status === 'cancelled') {
-    return { ok: false, error: `Job already ${job.status}` };
+    return { ok: false, error: 'errors.cancelFinished' };
   }
   job.cancelled = true;
   if (job.currentProc) {

@@ -23,7 +23,9 @@ the expression. All working data lives in **SQLite** and is edited from the UI.
 | :---: | :---: |
 | ![Variant modal](docs/screenshots/modal-variante.png) | ![Inpaint modal](docs/screenshots/modal-inpaint.png) |
 
-> The UI is currently in Spanish; these screenshots show the same screens described below.
+> The UI is available in **Spanish and English**; pick the language from the
+> selector in the sidebar (persisted in `localStorage`, also overridable with
+> `?lang=en`). Screenshots show the Spanish UI.
 
 ## Concepts
 
@@ -34,7 +36,7 @@ the expression. All working data lives in **SQLite** and is edited from the UI.
 - **Base**: reference portrait (800×800 → 512 crop + rembg). It stores its own
   clothing, seed, model, sampler, etc. — the base _is_ the preset.
 - **Variant**: expression + clothing + accessories + framing + facial-consistency
-  method (PhotoMaker/IP-Adapter using the face from a base). It also stores its own
+  identity method (PhotoMaker/IP-Adapter using the face from a base). It also stores its own
   generation settings; `Regenerate` retouches and generates again, `Clone` duplicates
   it so you can experiment without touching the original.
 - **Inpaint**: region correction on a variant with `-M adetailer` (its own denoise
@@ -145,8 +147,8 @@ region text as `--ad-prompt`; with the `prompt` anchor it prepends the character
 | `/api/gallery`                                                                    | GET                 | metadata for every image (no prompts)                                                                                                         |
 | `/api/gallery/:kind/:id`                                                          | GET                 | resolved prompt for one image (`base`\|`variant`\|`inpaint`)                                                                                  |
 | `/api/generate-base`                                                              | POST                | `{character, baseId?, clothing, ...}` → job                                                                                                   |
-| `/api/generate-variant`                                                           | POST                | `{character, baseId, variantId?, expression, clothing, accessories, framingKey, method, strength, ...}`                                       |
-| `/api/inpaint-variant`                                                            | POST                | `{variantId, label, region, prompt, negative, denoise, identityMode, ...}` → job (the `label` is unique per variant: regenerating overwrites) |
+| `/api/generate-variant`                                                           | POST                | `{character, baseId, variantId?, expression, clothing, accessories, framingKey, identityMethod, strength, ...}`                               |
+| `/api/inpaint-variant`                                                            | POST                | `{variantId, label, region, prompt, negative, denoise, identityMethod, strength, ...}` → job (the `label` is unique per variant: regenerating overwrites) |
 | `/api/jobs`                                                                       | GET                 | active/queued jobs (to rehydrate tracking after a refresh)                                                                                    |
 | `/api/generate/:id/stream` · `/cancel` · `/:id`                                   | GET/POST            | SSE (includes `queuePosition`), cancel, status                                                                                                |
 | `/api/config` · `/api/models`                                                     | GET                 | environment + available checkpoints                                                                                                           |
@@ -159,7 +161,7 @@ region text as `--ad-prompt`; with the `prompt` anchor it prepends the character
   base/variant cannot be queued twice (409 if a job is already running).
 - Variant: 1st `img_gen` pass (scene/clothing/background) + 2nd `-M adetailer` pass
   with PhotoMaker/IP-Adapter **on the face only** (requires `SD_AD_FACE_MODEL`).
-  `method: none` skips the second pass. `SD_AD_FACE_STEPS` tunes the 2nd-pass steps.
+  `identityMethod: none` skips the second pass. `SD_AD_FACE_STEPS` tunes the 2nd-pass steps.
 - Inpaint: `-M adetailer` over the detected region, with its own `denoise`
   (0.05–0.95) and prompt; the source is the variant's background-free stage (or the
   final image). The identifier identifies the inpaint within its variant:

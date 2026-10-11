@@ -23,6 +23,10 @@ expresión. Todo el material de trabajo vive en **SQLite** y se edita desde la U
 | :---: | :---: |
 | ![Modal de variante](docs/screenshots/modal-variante.png) | ![Modal de inpaint](docs/screenshots/modal-inpaint.png) |
 
+> La UI está disponible en **español e inglés**: el selector de idioma está en la
+> barra lateral (se recuerda en `localStorage` y también se puede forzar con
+> `?lang=en`). Las capturas muestran la UI en español.
+
 ## Conceptos
 
 - **Personaje**: identidad fija (`identity`, `face`, `hair`, `body`, `lighting`) +
@@ -144,8 +148,8 @@ manda el texto de la región como `--ad-prompt`; con anclaje `prompt` antepone
 | `/api/gallery`                                                                    | GET                 | metadata de todas las imágenes (sin prompts)                                                                                               |
 | `/api/gallery/:kind/:id`                                                          | GET                 | prompt resuelto de una imagen (`base`\|`variant`\|`inpaint`)                                                                               |
 | `/api/generate-base`                                                              | POST                | `{character, baseId?, clothing, ...}` → job                                                                                                |
-| `/api/generate-variant`                                                           | POST                | `{character, baseId, variantId?, expression, clothing, accessories, framingKey, method, strength, ...}`                                    |
-| `/api/inpaint-variant`                                                            | POST                | `{variantId, label, region, prompt, negative, denoise, identityMode, ...}` → job (el `label` es único por variante: regenerar sobrescribe) |
+| `/api/generate-variant`                                                           | POST                | `{character, baseId, variantId?, expression, clothing, accessories, framingKey, identityMethod, strength, ...}`                               |
+| `/api/inpaint-variant`                                                            | POST                | `{variantId, label, region, prompt, negative, denoise, identityMethod, strength, ...}` → job (el `label` es único por variante: regenerar sobrescribe) |
 | `/api/jobs`                                                                       | GET                 | jobs activos/encolados (para rehidratar el seguimiento tras un refresh)                                                                    |
 | `/api/generate/:id/stream` · `/cancel` · `/:id`                                   | GET/POST            | SSE (incluye `queuePosition`), detener, estado                                                                                             |
 | `/api/config` · `/api/models`                                                     | GET                 | entorno + checkpoints disponibles                                                                                                          |
@@ -158,7 +162,7 @@ manda el texto de la región como `--ad-prompt`; con anclaje `prompt` antepone
   encolar dos veces la misma base/variante (409 si ya hay un job en curso).
 - Variante: 1er pase `img_gen` (escena/ropa/fondo) + 2do pase `-M adetailer` con
   PhotoMaker/IP-Adapter **solo sobre la cara** (requiere `SD_AD_FACE_MODEL`).
-  `method: none` omite el segundo pase. `SD_AD_FACE_STEPS` ajusta los steps del 2º pase.
+  `identityMethod: none` omite el segundo pase. `SD_AD_FACE_STEPS` ajusta los steps del 2º pase.
 - Inpaint: `-M adetailer` sobre la región detectada, con `denoise` (0.05–0.95) y
   prompt propios; la fuente es el stage sin fondo de la variante (o la imagen final).
   El identificador identifica al inpaint dentro de su variante: regenerar con el

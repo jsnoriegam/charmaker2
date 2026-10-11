@@ -18,18 +18,19 @@ CharMaker2: SPA + servidor Express que genera personajes de visual novels vía `
 - Import JSON y `npm run seed` llaman a `cleanupOrphanImages`: **borran** `generated/<key>/` y refs `_photomaker_ref`/`_ipadapter_ref` de personajes que ya no están en la DB.
 - Los tests de `sdcli.test.js` / `jobs.test.js` no ejecutan `sd-cli` real; no se necesita GPU ni `.env` para `npm test`.
 - La cola de generación es FIFO exclusiva (una job a la vez); el progreso va por SSE parseando stdout de `sd-cli`.
-- Variante con consistencia facial = 2 pases (`img_gen` + adetailer/PhotoMaker); requiere `SD_AD_FACE_MODEL` configurada. `method: none` omite el segundo pase.
+- Variante con consistencia facial = 2 pases (`img_gen` + adetailer/PhotoMaker); requiere `SD_AD_FACE_MODEL` configurada. `identityMethod: none` omite el segundo pase.
 - rembg es un venv de Python opcional: `bash scripts/setup-rembg.sh` (instala y precarga BiRefNet-general). Resolución del binario: `REMBG_BIN` → `.venv/bin/rembg` → PATH.
 - Los inpaints se identifican por `(variant_id, label)` (label `[a-z0-9_-]+`, en minúsculas): `upsertInpaint()` en `db.js` **sobrescribe** al regenerar con el mismo label; renombrar a uno ya usado en la variante da 409.
 - Los modales de base/variante/inpaint marcan `dirty` vía `@input`/`@change` y piden confirmación al cerrar (Guardar/Descartar/Cancelar). El server persiste los settings al aceptar el job, así que el flag se limpia al generar.
 - Imágenes generadas: cache-busting con `imgSrc()`/`assetVersion` en `public/app.js` (la ruta no cambia al regenerar). Los assets del front se sirven con `Cache-Control: no-store`.
 - `SD_STAGES_TTL_HOURS` (default 0) purga `_stages` viejos; los inpaints los usan como fuente preferida (evita aplanar el fondo removido).
+- i18n (es/en): `public/i18n.js` es la **única fuente de traducciones**; el front traduce con `t()`. El server emite **claves** estables (`errors.*`, `stages.*`) + `params` en las respuestas (`{ error: key, params }`, `progress.stage`/`stageParams`); los `Error.message` internos quedan con la clave y los tests verifican `err.i18nKey`.
 
 ## Estructura
 
 - `server.js` — entrypoint Express; monta routers de `server/routes/`.
 - `server/` — `config.js` (todas las vars de entorno se leen ahí vía dotenv), `prompts.js` (armado de capas positivo/negativo), `sdcli.js` (construcción de argv para sd-cli), `jobs.js` (cola), `pipeline/{base,variant,inpaint}.js`, `rembg.js`, `zip.js`/`bundle.js` (bundle `.zip` de un personaje).
-- `public/app.js` + `index.html` — SPA Alpine.js (vendor en `public/vendor/`); el modal llama a `/api/preview` debounced para mostrar positivo/negativo y conflictos.
+- `public/app.js` + `index.html` — SPA Alpine.js (vendor en `public/vendor/`); `public/i18n.js` (diccionarios es/en + `t()`); el modal llama a `/api/preview` debounced para mostrar positivo/negativo y conflictos.
 - El negocio del prompt vive en `server/prompts.js`; duplicar lógica de capas en otro lado rompe la preview.
 
 ## Estilo

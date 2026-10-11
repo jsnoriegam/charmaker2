@@ -9,11 +9,11 @@ import { runSdCli, commonSdArgs } from '../sdcli.js';
 import { removeBackground } from '../rembg.js';
 
 // ctx: { job, char, row, settings, seed, adModel, adPrompt, adNegative, denoise,
-//        identityMode, identityStrength, identityBase, scenePrompt, sourcePath, modelPath, body }
+//        identityMethod, strength, identityBase, scenePrompt, sourcePath, modelPath, body }
 export async function runInpaintGeneration(ctx) {
   const {
     job, char, row, settings, seed, adModel, adPrompt, adNegative, denoise,
-    identityMode, identityStrength, identityBase, scenePrompt, sourcePath, modelPath, body,
+    identityMethod, strength, identityBase, scenePrompt, sourcePath, modelPath, body,
   } = ctx;
   const jobId = job.id;
   if (job.cancelled) { job.status = 'cancelled'; emitJobUpdate(jobId); return; }
@@ -57,19 +57,19 @@ export async function runInpaintGeneration(ctx) {
 
     // Anclaje de identidad vía PhotoMaker/IP-Adapter: misma técnica que el
     // pase de identidad de variantes, apuntando a la imagen de la base.
-    if (identityMode === 'photomaker' || identityMode === 'ipadapter') {
+    if (identityMethod === 'photomaker' || identityMethod === 'ipadapter') {
       const refPath = join(PROJECT_ROOT, identityBase.image_path);
 
-      if (identityMode === 'photomaker') {
+      if (identityMethod === 'photomaker') {
         const photoMakerModel = process.env.SD_PHOTOMAKER_PATH;
         const pmIdImagesDir = join(OUTPUT_DIR, '_photomaker_ref', `${char.key}_base${identityBase.id}`);
         if (!existsSync(pmIdImagesDir)) mkdirSync(pmIdImagesDir, { recursive: true });
         await sharp(refPath).flatten({ background: '#ffffff' }).png().toFile(join(pmIdImagesDir, 'ref.png'));
         args.push('--photo-maker', photoMakerModel, '--pm-id-images-dir', pmIdImagesDir);
-        args.push('--pm-style-strength', String(identityStrength));
+        args.push('--pm-style-strength', String(strength));
       }
 
-      if (identityMode === 'ipadapter') {
+      if (identityMethod === 'ipadapter') {
         const ipAdapterModel = process.env.SD_IP_ADAPTER_PATH;
         const clipVisionModel = process.env.SD_CLIP_VISION_PATH;
         const cropDir = join(OUTPUT_DIR, '_ipadapter_ref');
@@ -84,11 +84,11 @@ export async function runInpaintGeneration(ctx) {
           .png()
           .toFile(ipAdapterRefPath);
         args.push('--clip_vision', clipVisionModel, '--ip-adapter', ipAdapterModel, '--ip-adapter-image', ipAdapterRefPath);
-        args.push('--ip-adapter-strength', String(identityStrength));
+        args.push('--ip-adapter-strength', String(strength));
       }
     }
 
-    job.progress.stage = 'Inpintando rostro';
+    job.progress.stage = 'stages.inpaintFace';
     emitJobUpdate(jobId);
     await runSdCli(args, job);
     if (job.cancelled) { job.status = 'cancelled'; emitJobUpdate(jobId); return; }

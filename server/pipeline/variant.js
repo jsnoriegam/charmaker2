@@ -10,11 +10,11 @@ import { runSdCli, commonSdArgs, buildFacePassArgs } from '../sdcli.js';
 import { removeBackground } from '../rembg.js';
 
 // ctx: { job, char, row, base, settings, resolvedSeed, draft, body, modelPath,
-//        method, usePhotoMaker, useIpAdapter, pmStyleStrength, resolvedWidth, resolvedHeight }
+//        identityMethod, usePhotoMaker, useIpAdapter, pmStyleStrength, resolvedWidth, resolvedHeight }
 export async function runVariantGeneration(ctx) {
   const {
     job, char, row, base, settings, resolvedSeed, draft, body, modelPath,
-    method, usePhotoMaker, useIpAdapter, pmStyleStrength,
+    identityMethod, usePhotoMaker, useIpAdapter, pmStyleStrength,
   } = ctx;
   const resolvedWidth = ctx.resolvedWidth ?? WIDTH;
   const resolvedHeight = ctx.resolvedHeight ?? HEIGHT;
@@ -53,7 +53,7 @@ export async function runVariantGeneration(ctx) {
     job.progress.totalSteps = settings.steps;
     job.progress.currentStep = 0;
     job.progress.percent = 0;
-    job.progress.stage = 'Generación principal';
+    job.progress.stage = 'stages.main';
     emitJobUpdate(jobId);
     await runSdCli(sceneArgs, job);
     if (job.cancelled) { job.status = 'cancelled'; emitJobUpdate(jobId); return; }
@@ -64,10 +64,10 @@ export async function runVariantGeneration(ctx) {
     if (usePhotoMaker || useIpAdapter) {
       const refPath = base.image_path ? join(PROJECT_ROOT, base.image_path) : null;
       if (!refPath || !existsSync(refPath)) {
-        throw new Error('La base seleccionada todavía no tiene imagen generada. Generá la base primero.');
+        throw new Error('errors.variantBaseNoImage');
       }
 
-      const { positive: facePositive, negative: faceNegative } = buildPromptLayers({ ...draft, method });
+      const { positive: facePositive, negative: faceNegative } = buildPromptLayers({ ...draft, identityMethod });
 
       let photoMakerModel, pmIdImagesDir;
       let ipAdapterModel, clipVisionModel, ipAdapterRefPath;
@@ -108,7 +108,7 @@ export async function runVariantGeneration(ctx) {
         useIpAdapter, ipAdapterModel, clipVisionModel, ipAdapterRefPath, ipAdapterStrength: pmStyleStrength,
       });
 
-      job.progress.stage = 'Ajustando rostro (identidad)';
+      job.progress.stage = 'stages.faceIdentity';
       job.progress.currentStep = 0;
       job.progress.percent = 0;
       emitJobUpdate(jobId);

@@ -14,21 +14,21 @@ router.get('/accessories', crud(() => Object.entries(promptData().ACCESSORIES).m
 function collectionItem(router, table, path, current) {
   router.post(path, crud((req, res) => {
     const { key, ...rest } = req.body;
-    if (!key) throw httpError(400, 'Falta la clave');
-    if (current()[key]) throw httpError(409, `Ya existe una entrada con la clave "${key}"`);
+    if (!key) throw httpError(400, 'errors.keyRequired');
+    if (current()[key]) throw httpError(409, 'errors.keyExists', { key });
     const created = saveFramingOrAccessory(table, key, rest);
     invalidatePromptData();
     res.status(201);
     return created;
   }));
   router.put(`${path}/:key`, crud((req) => {
-    if (!current()[req.params.key]) throw httpError(404, 'No encontrado');
+    if (!current()[req.params.key]) throw httpError(404, 'errors.notFound');
     const updated = saveFramingOrAccessory(table, req.params.key, req.body);
     invalidatePromptData();
     return updated;
   }));
   router.delete(`${path}/:key`, crud((req) => {
-    if (!deleteFramingOrAccessory(table, req.params.key)) throw httpError(404, 'No encontrado');
+    if (!deleteFramingOrAccessory(table, req.params.key)) throw httpError(404, 'errors.notFound');
     invalidatePromptData();
     return { ok: true };
   }));
@@ -38,7 +38,7 @@ collectionItem(router, 'accessories', '/accessories', () => promptData().ACCESSO
 
 router.put('/globals', crud((req) => {
   const { positive, negative } = req.body;
-  if (typeof positive !== 'string' || typeof negative !== 'string') throw httpError(400, 'Se esperan positive y negative como strings');
+  if (typeof positive !== 'string' || typeof negative !== 'string') throw httpError(400, 'errors.promptStringsRequired');
   setGlobal('positive', positive);
   setGlobal('negative', negative);
   invalidatePromptData();
@@ -51,7 +51,7 @@ router.get('/prompt-data', crud(() => getPromptSnapshot()));
 // bases/variantes de personajes que ya no existen).
 router.put('/prompt-data', crud((req) => {
   const { characters, framings, accessories, globals } = req.body;
-  if (!characters || typeof characters !== 'object') throw httpError(400, 'El JSON importado necesita un objeto "characters"');
+  if (!characters || typeof characters !== 'object') throw httpError(400, 'errors.charactersRequired');
   replaceAllPromptData({ characters, framings, accessories, globals });
   invalidatePromptData();
   cleanupOrphanImages(Object.keys(characters));

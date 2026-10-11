@@ -13,8 +13,18 @@ async function api(path, opts = {}) {
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) throw new Error(errorMessage(data, res.status));
   return data;
+}
+
+// El server manda claves estables (ej. 'errors.baseNotFound') + params; si no
+// es una clave conocida (errores técnicos de sd-cli/fs) se muestra tal cual.
+function errorMessage(data, status) {
+  const key = data && data.error;
+  if (typeof key === 'string' && globalThis.i18n && globalThis.i18n.has(key)) {
+    return globalThis.i18n.t(key, data.params);
+  }
+  return key || `HTTP ${status}`;
 }
 
 const LEGACY_SAMPLERS = { dpmpp_2m_sde: 'dpm++2m_sde', dpmpp_2m: 'dpm++2m' };
@@ -37,6 +47,8 @@ function rowSettings(row, config) {
 function app() {
   return {
     view: 'characters',
+    lang: globalThis.i18n ? globalThis.i18n.detect() : 'es',
+    languages: globalThis.i18n ? globalThis.i18n.LANGS : [],
     config: null,
     models: [],
     samplers: [],
@@ -74,8 +86,18 @@ function app() {
 
     // ---------------- init ----------------
 
+    // Traducción: lee this.lang para que Alpine re-renderice al cambiar idioma.
+    t(key, params) {
+      return globalThis.i18n.translate(this.lang, key, params);
+    },
+
+    setLang(lang) {
+      this.lang = globalThis.i18n.apply(lang);
+    },
+
     async boot() {
       try {
+        this.lang = globalThis.i18n.apply(this.lang);
         this.setupRoutes();
         await this.refreshGlobal();
         await this.resumeJobs();
@@ -104,6 +126,7 @@ function app() {
             currentStep: job.progress?.currentStep ?? 0,
             totalSteps: job.progress?.totalSteps,
             stage: job.progress?.stage || '',
+            stageParams: job.progress?.stageParams,
             error: job.error || '',
             queuePosition: job.queuePosition ?? null,
           };
@@ -117,9 +140,9 @@ function app() {
 
     jobLabel(job) {
       const who = job.character || '';
-      if (job.kind === 'base') return `Base ${job.refId} — ${who}`;
-      if (job.kind === 'variant') return `Variante ${job.refId} — ${who}`;
-      return `Inpaint ${job.refId} — ${who}`;
+      if (job.kind === 'base') return this.t('jobs.baseLabel', { id: job.refId, char: who });
+      if (job.kind === 'variant') return this.t('jobs.variantLabel', { id: job.refId, char: who });
+      return this.t('jobs.inpaintLabel', { id: job.refId, char: who });
     },
 
     // ---------------- ruteo por hash (persiste la vista en un refresh) ----------------
@@ -192,7 +215,7 @@ function app() {
         if (character && g.character !== character) return false;
         if (kind && g.kind !== kind) return false;
         if (!q) return true;
-        return [g.character, g.title, g.meta?.label, g.meta?.expression, g.meta?.clothing]
+        return [g.character, this.galleryItemTitle(g), g.meta?.label, g.meta?.expression, g.meta?.clothing]
           .some(v => String(v || '').toLowerCase().includes(q));
       });
       const byDateAsc = (a, b) => String(a.created_at).localeCompare(String(b.created_at));
@@ -224,18 +247,34 @@ function app() {
 
     // Nombre de descarga: siempre prefijo con el personaje; para inpaints además
     // el identificador de la variante origen: <personaje>_[origen_]identificador.ext
+    // (nombres de archivo neutros al idioma).
     galleryDownloadName(item) {
       const ext = item.image_path.match(/\.\w+$/)?.[0] ?? '.png';
       const clean = s => String(s).replace(/[\\/:*?"<>|\s]+/g, '_');
       const id = item.kind === 'inpaint'
         ? (item.meta.label || `inpaint_${item.id}`)
         : item.kind === 'variant'
-          ? (item.meta.label || `variante_${item.id}`)
+          ? (item.meta.label || `variant_${item.id}`)
           : `base_${item.id}`;
       const origin = item.kind === 'inpaint'
-        ? clean(item.meta.source_label || `variante_${item.meta.variant_id ?? '?'}`)
+        ? clean(item.meta.source_label || `variant_${item.meta.variant_id ?? '?'}`)
         : '';
       return [clean(item.character), origin, clean(id)].filter(Boolean).join('_') + ext;
+    },
+
+    // Título mostrado en la galería (se arma en el front para poder traducirlo).
+    galleryItemTitle(item) {
+      const m = item.meta || {};
+      if (item.kind === 'base') return `${this.t('gallery.baseTitle', { id: item.id })} · ${m.clothing || this.t('gallery.noClothing')}`;
+      if (item.kind === 'variant') return `${m.label || this.t('gallery.variantTitle', { id: item.id })}${m.expression ? ` · ${m.expression}` : ''}`;
+      return this.t('gallery.inpaintTitle', { label: m.label });
+    },
+
+    galleryOriginTitle(item) {
+      const origin = item.origin;
+      if (!origin) return '';
+      if (origin.kind === 'base') return this.t('gallery.baseTitle', { id: origin.id });
+      return item.meta?.source_label || this.t('gallery.variantTitle', { id: origin.id });
     },
 
     // ←/→ en el modal de galería: pasar a la imagen original y volver.
@@ -256,36 +295,36 @@ function app() {
 
     galleryMetaRows(item) {
       const m = item.meta || {};
-      const rows = [['creada', item.created_at]];
-      if (item.character) rows.push(['personaje', item.character]);
-      if (m.seed != null) rows.push(['seed', m.seed]);
-      if (m.steps != null) rows.push(['steps', m.steps]);
-      if (m.cfg != null) rows.push(['cfg', m.cfg]);
-      if (m.sampler) rows.push(['sampler', m.sampler]);
-      if (m.schedule) rows.push(['scheduler', m.schedule]);
-      if (m.model) rows.push(['modelo', m.model]);
+      const rows = [[this.t('prop.created'), item.created_at]];
+      if (item.character) rows.push([this.t('prop.character'), item.character]);
+      if (m.seed != null) rows.push([this.t('prop.seed'), m.seed]);
+      if (m.steps != null) rows.push([this.t('prop.steps'), m.steps]);
+      if (m.cfg != null) rows.push([this.t('prop.cfg'), m.cfg]);
+      if (m.sampler) rows.push([this.t('prop.sampler'), m.sampler]);
+      if (m.schedule) rows.push([this.t('prop.schedule'), m.schedule]);
+      if (m.model) rows.push([this.t('prop.model'), m.model]);
       if (item.kind === 'base') {
-        rows.push(['ropas', m.clothing || '—'], ['encuadre', m.framing_key]);
+        rows.push([this.t('prop.clothing'), m.clothing || '—'], [this.t('prop.framing'), m.framing_key]);
       }
       if (item.kind === 'variant') {
-        rows.push(['expresión', m.expression || '—'], ['ropas', m.clothing || '—']);
-        if (m.accessories?.length) rows.push(['accesorios', m.accessories.join(', ')]);
-        if (m.method && m.method !== 'none') {
-          rows.push(['identidad', m.method]);
-          if (m.strength != null) rows.push(['strength', m.strength]);
+        rows.push([this.t('prop.expression'), m.expression || '—'], [this.t('prop.clothing'), m.clothing || '—']);
+        if (m.accessories?.length) rows.push([this.t('prop.accessories'), m.accessories.join(', ')]);
+        if (m.identity_method && m.identity_method !== 'none') {
+          rows.push([this.t('prop.identity'), m.identity_method]);
+          if (m.strength != null) rows.push([this.t('prop.strength'), m.strength]);
         }
-        if (m.width && m.height) rows.push(['tamaño', `${m.width}x${m.height}`]);
-        if (m.base_id) rows.push(['base', `#${m.base_id}`]);
+        if (m.width && m.height) rows.push([this.t('prop.size'), `${m.width}x${m.height}`]);
+        if (m.base_id) rows.push([this.t('prop.base'), `#${m.base_id}`]);
       }
       if (item.kind === 'inpaint') {
-        rows.push(['región', m.region], ['denoise', m.denoise]);
-        if (m.identity_mode && m.identity_mode !== 'none') {
-          rows.push(['anclaje', m.identity_mode]);
-          if (m.identity_strength != null) rows.push(['strength', m.identity_strength]);
+        rows.push([this.t('prop.region'), this.t('region.' + m.region)], [this.t('prop.denoise'), m.denoise]);
+        if (m.identity_method && m.identity_method !== 'none') {
+          rows.push([this.t('prop.anchor'), m.identity_method]);
+          if (m.strength != null) rows.push([this.t('prop.strength'), m.strength]);
         }
-        if (m.variant_id) rows.push(['variante', `#${m.variant_id}`]);
+        if (m.variant_id) rows.push([this.t('prop.variant'), `#${m.variant_id}`]);
       }
-      rows.push(['quitar fondo', m.rembg ? 'sí' : 'no']);
+      rows.push([this.t('prop.rembg'), m.rembg ? this.t('prop.yes') : this.t('prop.no')]);
       return rows;
     },
 
@@ -412,7 +451,7 @@ function app() {
       try {
         await api('/api/characters', { method: 'POST', body: form });
         this.charModal = null;
-        this.toast('Personaje creado', 'ok');
+        this.toast(this.t('toast.characterCreated'), 'ok');
         await this.loadCharacters();
         await this.openCharacter(form.key);
       } catch (err) { this.toast(err.message, 'err'); }
@@ -422,7 +461,7 @@ function app() {
       const { key, char } = this.detail;
       try {
         await api(`/api/characters/${encodeURIComponent(key)}`, { method: 'PUT', body: char });
-        this.toast('Identidad guardada', 'ok');
+        this.toast(this.t('toast.identitySaved'), 'ok');
         this.detail.key = char.key;
         await this.refreshDetail();
         await this.loadCharacters();
@@ -436,7 +475,7 @@ function app() {
         this.view = 'characters';
         this.syncHash();
         await this.loadCharacters();
-        this.toast('Personaje eliminado', 'ok');
+        this.toast(this.t('toast.characterDeleted'), 'ok');
       } catch (err) { this.toast(err.message, 'err'); }
     },
 
@@ -458,11 +497,11 @@ function app() {
     // Diálogo "¿guardar antes de cerrar?" para un modal con cambios sin guardar.
     confirmUnsaved(kind) {
       this.confirmModal = {
-        title: 'Cambios sin guardar',
-        message: 'Modificaste la configuración de este item. ¿Querés guardarla antes de cerrar?',
-        confirmLabel: 'Guardar',
+        title: this.t('confirm.unsavedTitle'),
+        message: this.t('confirm.unsavedMsg'),
+        confirmLabel: this.t('confirm.save'),
         confirmClass: 'btn-primary',
-        discardLabel: 'Descartar',
+        discardLabel: this.t('confirm.discard'),
         hasDiscard: true,
         action: async () => {
           const ok = kind === 'base' ? await this.saveBaseChanges()
@@ -512,7 +551,7 @@ function app() {
       }
       return {
         type: 'variant', character: this.detail.key, clothing: d.clothing, negativeExtra: d.negativeExtra,
-        expression: d.expression, accessories: d.accessories, framingKey: d.framingKey, method: d.method,
+        expression: d.expression, accessories: d.accessories, framingKey: d.framingKey, identityMethod: d.identityMethod,
       };
     },
 
@@ -556,7 +595,7 @@ function app() {
       const m = this.baseModal;
       const d = m.draft;
       m.busy = true;
-      m.progress = { status: 'pending', percent: 0, stage: 'En cola...' };
+      m.progress = { status: 'pending', percent: 0, stage: 'stages.queued' };
       try {
         const { jobId, baseId } = await api('/api/generate-base', {
           method: 'POST',
@@ -574,8 +613,8 @@ function app() {
         d.baseId = d.baseId || baseId;
         const jobEntry = {
           jobId, kind: 'base', character: this.detail.key, refId: baseId,
-          label: `Base ${baseId} — ${this.detail.key}`,
-          status: 'pending', percent: 0, stage: 'En cola...', error: '',
+          label: this.t('jobs.baseLabel', { id: baseId, char: this.detail.key }),
+          status: 'pending', percent: 0, stage: 'stages.queued', error: '',
         };
         this.activeJobs.push(jobEntry);
         this.watchJob(jobId, jobEntry);
@@ -600,7 +639,7 @@ function app() {
           },
         });
         m.dirty = false;
-        this.toast('Base guardada', 'ok');
+        this.toast(this.t('toast.baseSaved'), 'ok');
         await this.refreshDetail();
         return true;
       } catch (err) { this.toast(err.message, 'err'); return false; }
@@ -611,7 +650,7 @@ function app() {
         await api(`/api/bases/${id}/clone`, { method: 'POST' });
         await this.refreshDetail();
         this.invalidateGallery();
-        this.toast('Base clonada', 'ok');
+        this.toast(this.t('toast.baseCloned'), 'ok');
       } catch (err) { this.toast(err.message, 'err'); }
     },
 
@@ -629,10 +668,15 @@ function app() {
       if (!this.config) return;
       const withImage = this.detail.bases.filter(b => b.image_path);
       const baseId = variant?.base_id ?? (withImage[0]?.id ?? this.detail.bases[0]?.id ?? null);
-      const method = variant?.method ?? (this.config.identityMethods.photomaker ? 'photomaker' : (this.config.identityMethods.ipadapter ? 'ipadapter' : 'none'));
+      const identityMethod = variant?.identity_method ?? (this.config.identityMethods.photomaker ? 'photomaker' : (this.config.identityMethods.ipadapter ? 'ipadapter' : 'none'));
       const existingJob = variant?.id
         ? this.activeJobs.find(j => j.kind === 'variant' && j.refId === variant.id)
         : null;
+      // Si el strength guardado no es válido para el método (p. ej. quedó de un
+      // rango distinto), se normaliza al valor por defecto del método.
+      const strengthBounds = this.variantStrengthBounds(identityMethod);
+      let strength = variant?.strength ?? (strengthBounds ? this.defaultStrength(identityMethod) : '');
+      if (strengthBounds && !this.strengthValid(strength, strengthBounds)) strength = this.defaultStrength(identityMethod);
       this.variantModal = {
         draft: {
           variantId: variant?.id ?? null,
@@ -643,8 +687,8 @@ function app() {
           accessories: variant ? [...variant.accessories] : [],
           negativeExtra: variant?.negative_extra ?? '',
           framingKey: variant?.framing_key ?? 'three_quarters',
-          method,
-          strength: variant?.strength ?? (method !== 'none' ? this.defaultStrength(method) : ''),
+          identityMethod,
+          strength,
           size: variant?.width ? `${variant.width}x${variant.height}` : '832x1216',
           seedAuto: !variant?.seed,
           seed: variant?.seed ?? '',
@@ -670,26 +714,47 @@ function app() {
     },
 
     strengthError(d) {
-      if (d.method === 'none') return null;
-      const label = d.method === 'ipadapter' ? 'IP-Adapter' : 'PhotoMaker';
+      if (d.identityMethod === 'none') return null;
+      const label = d.identityMethod === 'ipadapter' ? 'IP-Adapter' : 'PhotoMaker';
       if (d.strength === '' || d.strength === null || d.strength === undefined) {
-        return `${label}: strength es obligatorio.`;
+        return this.t('validation.strengthRequired', { label });
       }
       const s = parseFloat(d.strength);
-      if (Number.isNaN(s)) return 'Strength inválido.';
-      if (d.method === 'ipadapter' && !(s > 0 && s <= 1)) return 'IP-Adapter: strength debe ser mayor que 0 y hasta 1.';
-      if (d.method === 'photomaker' && !(s > 0 && s <= 100)) return 'PhotoMaker: strength debe ser mayor que 0 y hasta 100.';
+      if (Number.isNaN(s)) return this.t('validation.strengthInvalid');
+      if (d.identityMethod === 'ipadapter' && !(s > 0 && s <= 1)) return this.t('validation.ipadapterRange');
+      if (d.identityMethod === 'photomaker' && !(s > 0 && s <= 100)) return this.t('validation.photomakerRange');
       return null;
     },
 
-    defaultStrength(method) {
-      return method === 'ipadapter' ? 0.5 : 30;
+    defaultStrength(identityMethod) {
+      return identityMethod === 'ipadapter' ? 0.5 : 30;
+    },
+
+    // Rangos válidos de strength por método (deben coincidir con los inputs del
+    // modal): IP-Adapter usa decimales (0.05–1), PhotoMaker enteros.
+    variantStrengthBounds(identityMethod) {
+      if (identityMethod === 'ipadapter') return { min: 0.05, max: 1 };
+      if (identityMethod === 'photomaker') return { min: 1, max: 100 };
+      return null;
+    },
+
+    inpaintStrengthBounds(identityMethod) {
+      if (identityMethod === 'ipadapter') return { min: 0.05, max: 1 };
+      if (identityMethod === 'photomaker') return { min: 5, max: 100 };
+      return null;
+    },
+
+    strengthValid(value, bounds) {
+      if (!bounds || value === '' || value === null || value === undefined) return false;
+      const s = parseFloat(value);
+      return !Number.isNaN(s) && s >= bounds.min && s <= bounds.max;
     },
 
     onMethodChange() {
       const d = this.variantModal.draft;
-      if (d.method !== 'none' && (d.strength === '' || d.strength === null || d.strength === undefined)) {
-        d.strength = this.defaultStrength(d.method);
+      const bounds = this.variantStrengthBounds(d.identityMethod);
+      if (bounds && !this.strengthValid(d.strength, bounds)) {
+        d.strength = this.defaultStrength(d.identityMethod);
       }
       this.schedulePreview();
     },
@@ -700,7 +765,7 @@ function app() {
       const strengthErr = this.strengthError(d);
       if (strengthErr) { this.toast(strengthErr, 'err'); return; }
       m.busy = true;
-      m.progress = { status: 'pending', percent: 0, stage: 'En cola...' };
+      m.progress = { status: 'pending', percent: 0, stage: 'stages.queued' };
       const [width, height] = d.size.split('x').map(Number);
       try {
         const { jobId, variantId } = await api('/api/generate-variant', {
@@ -711,7 +776,7 @@ function app() {
             baseId: d.baseId,
             label: d.label, expression: d.expression, clothing: d.clothing,
             accessories: d.accessories, negativeExtra: d.negativeExtra,
-            framingKey: d.framingKey, method: d.method,
+            framingKey: d.framingKey, identityMethod: d.identityMethod,
             strength: d.strength === '' ? undefined : parseFloat(d.strength),
             width, height, rembg: d.rembg,
             seed: d.seedAuto ? null : parseInt(d.seed, 10),
@@ -723,8 +788,8 @@ function app() {
         d.variantId = d.variantId || variantId;
         const jobEntry = {
           jobId, kind: 'variant', character: this.detail.key, refId: variantId,
-          label: `${d.label || 'Variante ' + variantId} — ${this.detail.key}`,
-          status: 'pending', percent: 0, stage: 'En cola...', error: '',
+          label: this.t('jobs.variantCustom', { label: d.label || this.t('jobs.defaultVariant', { id: variantId }), char: this.detail.key }),
+          status: 'pending', percent: 0, stage: 'stages.queued', error: '',
         };
         this.activeJobs.push(jobEntry);
         this.watchJob(jobId, jobEntry);
@@ -747,14 +812,14 @@ function app() {
           body: {
             baseId: d.baseId, label: d.label, expression: d.expression, clothing: d.clothing,
             accessories: d.accessories, negativeExtra: d.negativeExtra, framingKey: d.framingKey,
-            method: d.method, strength: d.strength === '' ? null : parseFloat(d.strength),
+            identityMethod: d.identityMethod, strength: d.strength === '' ? null : parseFloat(d.strength),
             seed: d.seedAuto ? null : parseInt(d.seed, 10),
             steps: d.steps, cfg: d.cfg, sampler: d.sampler, schedule: d.schedule, model: d.model,
             width, height, rembg: d.rembg,
           },
         });
         m.dirty = false;
-        this.toast('Variante guardada', 'ok');
+        this.toast(this.t('toast.variantSaved'), 'ok');
         await this.refreshDetail();
         return true;
       } catch (err) { this.toast(err.message, 'err'); return false; }
@@ -765,7 +830,7 @@ function app() {
         await api(`/api/variants/${id}/clone`, { method: 'POST' });
         await this.refreshDetail();
         this.invalidateGallery();
-        this.toast('Variante clonada', 'ok');
+        this.toast(this.t('toast.variantCloned'), 'ok');
       } catch (err) { this.toast(err.message, 'err'); }
     },
 
@@ -783,12 +848,12 @@ function app() {
       return (this.detail?.inpaints || []).filter(i => i.variant_id === variantId);
     },
 
-    // Refleja exactamente la concatenación que hace el server en modo 'prompt'
+    // Refleja exactamente la concatenación que hace el server en el método 'prompt'
     // (server/routes/generate.js): identidad anticipada al prompt de la región.
-    // null en otros modos, que no concatenan.
+    // null en otros métodos, que no concatenan.
     inpaintFinalPrompt() {
       const d = this.inpaintModal?.draft;
-      if (!d || d.identityMode !== 'prompt') return null;
+      if (!d || d.identityMethod !== 'prompt') return null;
       const c = this.detail?.char;
       if (!c) return null;
       const idParts = [c.identity, c.face, c.hair].filter(Boolean).join(', ');
@@ -800,12 +865,18 @@ function app() {
     openInpaintModal(variant, existingInpaint = null) {
       if (!this.config || !variant) return;
       const existingJob = this.activeJobs.find(j => j.kind === 'inpaint' && j.variantId === variant.id);
-      // Modo de identidad por defecto: si el personaje tiene photomaker/ipadapter
+      // Método de identidad por defecto: si el personaje tiene photomaker/ipadapter
       // disponibles preferimos eso; si no, al menos 'prompt' (no cuesta nada y
       // ya ayuda a que la cara no se vaya de tema).
-      const defaultIdentityMode = existingInpaint?.identity_mode
+      const defaultIdentityMethod = existingInpaint?.identity_method
         ?? (this.config.identityMethods.photomaker ? 'photomaker'
           : (this.config.identityMethods.ipadapter ? 'ipadapter' : 'prompt'));
+      // Normaliza un strength guardado que no encaje con el rango del método.
+      const strengthBounds = this.inpaintStrengthBounds(defaultIdentityMethod);
+      let strength = existingInpaint?.strength ?? this.defaultIdentityStrength(defaultIdentityMethod);
+      if (strengthBounds && !this.strengthValid(strength, strengthBounds)) {
+        strength = this.defaultIdentityStrength(defaultIdentityMethod);
+      }
       this.inpaintModal = {
         source: variant,
         editingId: existingInpaint?.id ?? null,
@@ -817,8 +888,8 @@ function app() {
           prompt: existingInpaint?.prompt ?? '',
           negative: existingInpaint?.negative ?? '',
           denoise: existingInpaint?.denoise ?? this.config.inpaint?.defaultDenoise ?? 0.45,
-          identityMode: defaultIdentityMode,
-          identityStrength: existingInpaint?.identity_strength ?? this.defaultIdentityStrength(defaultIdentityMode),
+          identityMethod: defaultIdentityMethod,
+          strength,
           seedAuto: !existingInpaint?.seed,
           seed: existingInpaint?.seed ?? '',
           rembg: existingInpaint ? !!existingInpaint.rembg : this.config.rembg.available,
@@ -837,49 +908,49 @@ function app() {
       this.closeModalNow('inpaint');
     },
 
-    defaultIdentityStrength(identityMode) {
-      if (identityMode === 'ipadapter') return 0.5;
-      if (identityMode === 'photomaker') return 30;
+    defaultIdentityStrength(identityMethod) {
+      if (identityMethod === 'ipadapter') return 0.5;
+      if (identityMethod === 'photomaker') return 30;
       return '';
     },
 
-    onInpaintIdentityModeChange() {
+    onInpaintMethodChange() {
       const d = this.inpaintModal.draft;
-      if ((d.identityMode === 'photomaker' || d.identityMode === 'ipadapter')
-        && (d.identityStrength === '' || d.identityStrength === null || d.identityStrength === undefined)) {
-        d.identityStrength = this.defaultIdentityStrength(d.identityMode);
+      const bounds = this.inpaintStrengthBounds(d.identityMethod);
+      if (bounds && !this.strengthValid(d.strength, bounds)) {
+        d.strength = this.defaultIdentityStrength(d.identityMethod);
       }
     },
 
-    inpaintIdentityStrengthError(d) {
-      if (d.identityMode !== 'photomaker' && d.identityMode !== 'ipadapter') return null;
-      const label = d.identityMode === 'ipadapter' ? 'IP-Adapter' : 'PhotoMaker';
-      if (d.identityStrength === '' || d.identityStrength === null || d.identityStrength === undefined) {
-        return `${label}: strength es obligatorio.`;
+    inpaintStrengthError(d) {
+      if (d.identityMethod !== 'photomaker' && d.identityMethod !== 'ipadapter') return null;
+      const label = d.identityMethod === 'ipadapter' ? 'IP-Adapter' : 'PhotoMaker';
+      if (d.strength === '' || d.strength === null || d.strength === undefined) {
+        return this.t('validation.strengthRequired', { label });
       }
-      const s = parseFloat(d.identityStrength);
-      if (Number.isNaN(s)) return 'Strength inválido.';
-      if (d.identityMode === 'ipadapter' && !(s > 0 && s <= 1)) return 'IP-Adapter: strength debe ser mayor que 0 y hasta 1.';
-      if (d.identityMode === 'photomaker' && !(s > 0 && s <= 100)) return 'PhotoMaker: strength debe ser mayor que 0 y hasta 100.';
+      const s = parseFloat(d.strength);
+      if (Number.isNaN(s)) return this.t('validation.strengthInvalid');
+      if (d.identityMethod === 'ipadapter' && !(s > 0 && s <= 1)) return this.t('validation.ipadapterRange');
+      if (d.identityMethod === 'photomaker' && !(s > 0 && s <= 100)) return this.t('validation.photomakerRange');
       return null;
     },
 
     // Validación compartida entre "Generar" y "Guardar cambios".
     validateInpaintDraft(d) {
       d.label = String(d.label ?? '').trim().toLowerCase();
-      if (!d.label) return 'Poné un identificador para la imagen.';
-      if (!/^[a-z0-9_-]+$/.test(d.label)) return 'Identificador inválido: solo letras, números, _ y -.';
-      if (!String(d.prompt ?? '').trim()) return 'El prompt de inpainting es obligatorio.';
-      return this.inpaintIdentityStrengthError(d);
+      if (!d.label) return this.t('validation.labelRequired');
+      if (!/^[a-z0-9_-]+$/.test(d.label)) return this.t('validation.labelInvalid');
+      if (!String(d.prompt ?? '').trim()) return this.t('validation.promptRequired');
+      return this.inpaintStrengthError(d);
     },
 
     inpaintBody(d) {
       return {
         variantId: d.variantId, label: d.label, region: d.region,
         prompt: d.prompt, negative: d.negative, denoise: parseFloat(d.denoise),
-        identityMode: d.identityMode,
-        identityStrength: (d.identityMode === 'photomaker' || d.identityMode === 'ipadapter')
-          ? parseFloat(d.identityStrength) : undefined,
+        identityMethod: d.identityMethod,
+        strength: (d.identityMethod === 'photomaker' || d.identityMethod === 'ipadapter')
+          ? parseFloat(d.strength) : undefined,
         seed: d.seedAuto ? null : parseInt(d.seed, 10), rembg: d.rembg,
       };
     },
@@ -894,7 +965,7 @@ function app() {
       try {
         await api(`/api/inpaints/${m.editingId}`, { method: 'PUT', body: this.inpaintBody(d) });
         m.dirty = false;
-        this.toast('Inpaint guardado', 'ok');
+        this.toast(this.t('toast.inpaintSaved'), 'ok');
         await this.refreshDetail();
         return true;
       } catch (e) { this.toast(e.message, 'err'); return false; }
@@ -906,7 +977,7 @@ function app() {
       const validationErr = this.validateInpaintDraft(d);
       if (validationErr) { this.toast(validationErr, 'err'); return; }
       m.busy = true;
-      m.progress = { status: 'pending', percent: 0, stage: 'En cola...' };
+      m.progress = { status: 'pending', percent: 0, stage: 'stages.queued' };
       try {
         const { jobId, inpaintId } = await api('/api/inpaint-variant', {
           method: 'POST',
@@ -916,8 +987,8 @@ function app() {
         m.dirty = false; // la ruta ya persistió estos settings al aceptar el job
         const jobEntry = {
           jobId, kind: 'inpaint', character: this.detail.key, refId: inpaintId, variantId: d.variantId,
-          label: `Inpaint ${m.source.label || 'variante'}_${d.label} — ${this.detail.key}`,
-          status: 'pending', percent: 0, stage: 'En cola...', error: '',
+          label: this.t('jobs.inpaintCustom', { source: m.source.label || this.t('item.variant'), label: d.label, char: this.detail.key }),
+          status: 'pending', percent: 0, stage: 'stages.queued', error: '',
         };
         this.activeJobs.push(jobEntry);
         this.watchJob(jobId, jobEntry);
@@ -932,7 +1003,7 @@ function app() {
         await api(`/api/inpaints/${id}`, { method: 'DELETE' });
         await this.refreshDetail();
         this.invalidateGallery();
-        this.toast('Inpaint eliminado', 'ok');
+        this.toast(this.t('toast.inpaintDeleted'), 'ok');
       } catch (err) { this.toast(err.message, 'err'); }
     },
 
@@ -961,6 +1032,7 @@ function app() {
       Object.assign(jobEntry, {
         status: msg.status,
         stage: p.stage,
+        stageParams: p.stageParams,
         percent: p.percent ?? jobEntry.percent ?? 0,
         currentStep: p.currentStep ?? 0,
         totalSteps: p.totalSteps ?? jobEntry.totalSteps,
@@ -988,7 +1060,7 @@ function app() {
         this.refreshDetail();
         this.invalidateGallery();
         this.loadCharacters();
-        this.toast(`Generación terminada — ${jobEntry.label}`, 'ok');
+        this.toast(this.t('toast.generationDone', { label: jobEntry.label }), 'ok');
         return true;
       }
       if (msg.status === 'error' || msg.status === 'cancelled') {
@@ -996,7 +1068,7 @@ function app() {
         this.removeActiveJob(jobId);
         this.finishJob({ ...jobEntry });
         this.toast(
-          msg.status === 'error' ? `Error en la generación — ${jobEntry.label}` : `Cancelada — ${jobEntry.label}`,
+          this.t(msg.status === 'error' ? 'toast.generationError' : 'toast.generationCancelled', { label: jobEntry.label }),
           msg.status === 'error' ? 'err' : ''
         );
         return true;
@@ -1068,7 +1140,7 @@ function app() {
     },
 
     confirmDeleteCollection(row) {
-      this.confirmDelete('Entrada', `Eliminar '${row._key}'.`, async () => {
+      this.confirmDelete(this.t('confirm.deleteEntryTitle'), this.t('confirm.deleteEntry', { key: row._key }), async () => {
         await this.deleteCollectionItem(this.view, row._key);
       });
     },
@@ -1080,11 +1152,11 @@ function app() {
           await api(path, { method: 'POST', body: { key: row._key, positive: row.positive, negative: row.negative } });
           row._isNew = false;
           row._origKey = row._key;
-          this.toast('Creado', 'ok');
+          this.toast(this.t('toast.created'), 'ok');
         } else {
           await api(`${path}/${encodeURIComponent(row._origKey)}`, { method: 'PUT', body: { key: row._key, positive: row.positive, negative: row.negative } });
           row._origKey = row._key;
-          this.toast('Guardado', 'ok');
+          this.toast(this.t('toast.saved'), 'ok');
         }
         await this.refreshGlobal();
       } catch (err) { this.toast(err.message, 'err'); }
@@ -1095,14 +1167,14 @@ function app() {
       try {
         await api(`${path}/${encodeURIComponent(key)}`, { method: 'DELETE' });
         await this.refreshGlobal();
-        this.toast('Eliminado', 'ok');
+        this.toast(this.t('toast.deleted'), 'ok');
       } catch (err) { this.toast(err.message, 'err'); }
     },
 
     async saveGlobals() {
       try {
         await api('/api/globals', { method: 'PUT', body: this.globals });
-        this.toast('Globales guardados', 'ok');
+        this.toast(this.t('toast.globalsSaved'), 'ok');
       } catch (err) { this.toast(err.message, 'err'); }
     },
 
@@ -1114,7 +1186,7 @@ function app() {
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'charmaker2-datos.json';
+        a.download = 'charmaker2-data.json';
         a.click();
         URL.revokeObjectURL(a.href);
       } catch (err) { this.toast(err.message, 'err'); }
@@ -1133,19 +1205,19 @@ function app() {
       if (!file) return;
       try {
         const json = JSON.parse(await file.text());
-        if (!json.characters) throw new Error('El JSON no tiene "characters"');
-        this.confirmDelete('Importar JSON',
-          `Reemplaza TODOS los personajes (y sus bases/variantes), framings, accesorios y globales con los ${Object.keys(json.characters).length} personajes del archivo.`,
+        if (!json.characters) throw new Error(this.t('validation.jsonNoCharacters'));
+        this.confirmDelete(this.t('confirm.importTitle'),
+          this.t('confirm.importMsg', { count: Object.keys(json.characters).length }),
           async () => {
             try {
               await api('/api/prompt-data', { method: 'PUT', body: json });
               await this.refreshGlobal();
               this.detail = null;
               this.view = 'characters';
-              this.toast('Datos importados', 'ok');
+              this.toast(this.t('toast.imported'), 'ok');
             } catch (err) { this.toast(err.message, 'err'); }
           });
-      } catch (err) { this.toast(`Import inválido: ${err.message}`, 'err'); }
+      } catch (err) { this.toast(this.t('toast.importFailed', { msg: err.message }), 'err'); }
     },
   };
 }

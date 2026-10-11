@@ -3,13 +3,12 @@ import assert from 'node:assert/strict';
 import { useTempDb } from './helpers.js';
 
 useTempDb();
-const db = await import('../db.js');
-const { resolveSampler, resolveGenerationSettings, resolveSeed, resolveVariantSeed } = await import('../server/sdcli.js');
+const { resolveSampler, resolveGenerationSettings, resolveSeed } = await import('../server/sdcli.js');
 
 test('resolveSampler aplica alias históricos y listas reales', () => {
   assert.equal(resolveSampler('dpmpp_2m_sde'), 'dpm++2m_sde');
   assert.equal(resolveSampler('euler_a'), 'euler_a');
-  assert.throws(() => resolveSampler('no-existe'), /Sampler desconocido/);
+  assert.throws(() => resolveSampler('no-existe'), (err) => err.i18nKey === 'errors.samplerUnknown');
 });
 
 test('resolveGenerationSettings defaultea sobre la fila y el body manda', () => {
@@ -29,7 +28,7 @@ test('resolveGenerationSettings rechaza sampler y scheduler desconocidos', () =>
   assert.throws(() => resolveGenerationSettings({ schedule: 'malo' }, null), statusCode400);
 });
 function statusCode400(err) {
-  return err.statusCode === 400 && /desconocido/i.test(err.message);
+  return err.statusCode === 400 && typeof err.i18nKey === 'string' && err.i18nKey.startsWith('errors.');
 }
 
 test('resolveSeed: explícito se parsea, vacío cae a random en rango', () => {
@@ -39,10 +38,4 @@ test('resolveSeed: explícito se parsea, vacío cae a random en rango', () => {
     const s = resolveSeed({ seed: null });
     assert.ok(Number.isInteger(s) && s >= 0 && s < 2147483647);
   }
-});
-
-test('resolveVariantSeed: vacío → determinístico por personaje+ropa (case/espacios irrelevantes)', () => {
-  assert.equal(resolveVariantSeed({ seed: null }, 'ana', 'Red Shirt'), db.variantSeed('ana', 'red shirt'));
-  assert.equal(resolveVariantSeed({}, 'ana', '  RED SHIRT  '), resolveVariantSeed({}, 'ana', 'red shirt'));
-  assert.equal(resolveVariantSeed({ seed: 7 }, 'ana', 'red shirt'), 7);
 });

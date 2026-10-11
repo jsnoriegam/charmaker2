@@ -27,23 +27,23 @@ const router = Router();
 // ---------------------------------------------------------------------------
 
 router.get('/bases', crud((req) => {
-  if (!req.query.character) throw httpError(400, 'Falta ?character=');
+  if (!req.query.character) throw httpError(400, 'errors.missingCharacterQuery');
   return listBases(req.query.character);
 }));
 
 router.get('/variants', crud((req) => {
-  if (!req.query.character) throw httpError(400, 'Falta ?character=');
+  if (!req.query.character) throw httpError(400, 'errors.missingCharacterQuery');
   return listVariants(req.query.character);
 }));
 
 router.get('/suggestions', crud((req) => {
-  if (!req.query.character) throw httpError(400, 'Falta ?character=');
+  if (!req.query.character) throw httpError(400, 'errors.missingCharacterQuery');
   return getVariantSuggestions(req.query.character);
 }));
 
 router.post('/bases/:id/clone', crud((req, res) => {
   const cloned = cloneBase(parseInt(req.params.id, 10));
-  if (!cloned) throw httpError(404, 'Base no encontrada');
+  if (!cloned) throw httpError(404, 'errors.baseNotFound');
   const imagePath = copyItemImage(cloned, 'base', cloned.id);
   if (imagePath) updateBase(cloned.id, { imagePath });
   res.status(201);
@@ -52,15 +52,15 @@ router.post('/bases/:id/clone', crud((req, res) => {
 
 router.put('/bases/:id', crud((req) => {
   const updated = updateBase(parseInt(req.params.id, 10), req.body);
-  if (!updated) throw httpError(404, 'Base no encontrada');
+  if (!updated) throw httpError(404, 'errors.baseNotFound');
   return updated;
 }));
 
 router.delete('/bases/:id', crud((req) => {
   const id = parseInt(req.params.id, 10);
   const row = getBaseRow(id);
-  if (!row) throw httpError(404, 'Base no encontrada');
-  if (!deleteBase(id)) throw httpError(404, 'Base no encontrada');
+  if (!row) throw httpError(404, 'errors.baseNotFound');
+  if (!deleteBase(id)) throw httpError(404, 'errors.baseNotFound');
   if (row.image_path) rmSync(join(PROJECT_ROOT, row.image_path), { force: true });
   removeBaseStages(row.character_id, id);
   return { ok: true };
@@ -68,7 +68,7 @@ router.delete('/bases/:id', crud((req) => {
 
 router.post('/variants/:id/clone', crud((req, res) => {
   const cloned = cloneVariant(parseInt(req.params.id, 10));
-  if (!cloned) throw httpError(404, 'Variante no encontrada');
+  if (!cloned) throw httpError(404, 'errors.variantNotFound');
   const imagePath = copyItemImage(cloned, 'variant', cloned.id);
   if (imagePath) updateVariant(cloned.id, { imagePath });
   res.status(201);
@@ -77,14 +77,14 @@ router.post('/variants/:id/clone', crud((req, res) => {
 
 router.put('/variants/:id', crud((req) => {
   const updated = updateVariant(parseInt(req.params.id, 10), req.body);
-  if (!updated) throw httpError(404, 'Variante no encontrada');
+  if (!updated) throw httpError(404, 'errors.variantNotFound');
   return updated;
 }));
 
 router.delete('/variants/:id', crud((req) => {
   const id = parseInt(req.params.id, 10);
   const row = getVariantRow(id);
-  if (!row) throw httpError(404, 'Variante no encontrada');
+  if (!row) throw httpError(404, 'errors.variantNotFound');
   // Las filas de inpaints caen por CASCADE; falta borrar sus imágenes y stages.
   const full = getVariant(id);
   if (full?.character) {
@@ -98,7 +98,7 @@ router.delete('/variants/:id', crud((req) => {
     rmSync(join(stagesDir, `variant_${id}_scene.png`), { force: true });
     rmSync(join(stagesDir, `variant_${id}_raw.png`), { force: true });
   }
-  if (!deleteVariant(id)) throw httpError(404, 'Variante no encontrada');
+  if (!deleteVariant(id)) throw httpError(404, 'errors.variantNotFound');
   if (row.image_path) rmSync(join(PROJECT_ROOT, row.image_path), { force: true });
   return { ok: true };
 }));
@@ -108,24 +108,24 @@ router.delete('/variants/:id', crud((req) => {
 // ---------------------------------------------------------------------------
 
 router.get('/inpaints', crud((req) => {
-  if (!req.query.character) throw httpError(400, 'Falta ?character=');
+  if (!req.query.character) throw httpError(400, 'errors.missingCharacterQuery');
   return listInpaints(req.query.character);
 }));
 
 router.put('/inpaints/:id', crud((req) => {
   const id = parseInt(req.params.id, 10);
   const row = getInpaintRow(id);
-  if (!row) throw httpError(404, 'Inpaint no encontrado');
+  if (!row) throw httpError(404, 'errors.inpaintNotFound');
 
   const label = String(req.body.label ?? '').trim().toLowerCase();
-  if (!label) throw httpError(400, 'El identificador es obligatorio.');
-  if (!/^[a-z0-9_-]+$/.test(label)) throw httpError(400, 'Identificador inválido: solo letras, números, _ y -.');
+  if (!label) throw httpError(400, 'errors.identifierRequired');
+  if (!/^[a-z0-9_-]+$/.test(label)) throw httpError(400, 'errors.identifierInvalid');
 
   const d = { ...req.body, label };
   if (d.denoise !== undefined) {
     const denoise = parseFloat(d.denoise);
     if (!Number.isFinite(denoise) || denoise < 0.05 || denoise > 0.95) {
-      throw httpError(400, 'La intensidad (denoise) debe estar entre 0.05 y 0.95.');
+      throw httpError(400, 'errors.denoiseRange');
     }
     d.denoise = denoise;
   }
@@ -134,21 +134,21 @@ router.put('/inpaints/:id', crud((req) => {
   // con el mismo identificador (se pisarían al regenerar).
   const clash = getInpaintByVariantLabel(row.variant_id, label);
   if (clash && clash.id !== id) {
-    throw httpError(409, `Ya existe un inpaint "${label}" en esta variante.`);
+    throw httpError(409, 'errors.inpaintLabelExists', { label });
   }
 
   const updated = updateInpaint(id, d);
-  if (!updated) throw httpError(404, 'Inpaint no encontrado');
+  if (!updated) throw httpError(404, 'errors.inpaintNotFound');
   return updated;
 }));
 
 router.delete('/inpaints/:id', crud((req) => {
   const id = parseInt(req.params.id, 10);
   const row = getInpaintRow(id);
-  if (!row) throw httpError(404, 'Inpaint no encontrado');
+  if (!row) throw httpError(404, 'errors.inpaintNotFound');
   const variant = getVariantRow(row.variant_id);
   const key = variant ? getCharacterRow(variant.character_id)?.key : null;
-  if (!deleteInpaint(id)) throw httpError(404, 'Inpaint no encontrado');
+  if (!deleteInpaint(id)) throw httpError(404, 'errors.inpaintNotFound');
   if (row.image_path) rmSync(join(PROJECT_ROOT, row.image_path), { force: true });
   if (key) {
     const { stagesDir } = itemDirs(key);

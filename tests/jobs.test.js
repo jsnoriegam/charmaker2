@@ -26,7 +26,7 @@ test('la cola corrida FIFO de a una tarea', async () => {
 });
 
 test('cancelJob sobre job inexistente', () => {
-  assert.deepEqual(jobs.cancelJob(999999), { ok: false, error: 'Job not found' });
+  assert.deepEqual(jobs.cancelJob(999999), { ok: false, error: 'errors.jobNotFound' });
 });
 
 test('cancelJob en pending marca cancelled y emite', () => {
@@ -47,7 +47,7 @@ test('cancelJob en pending marca cancelled y emite', () => {
 test('cancelJob en job terminado falla', () => {
   const id = jobs.nextJobId();
   jobs.jobs.set(id, { id, status: 'done', cancelled: false, createdAt: new Date().toISOString() });
-  assert.deepEqual(jobs.cancelJob(id), { ok: false, error: 'Job already done' });
+  assert.deepEqual(jobs.cancelJob(id), { ok: false, error: 'errors.cancelFinished' });
 });
 
 test('findActiveJob solo encuentra pending/running por kind+refId', () => {
