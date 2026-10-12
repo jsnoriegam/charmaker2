@@ -23,7 +23,7 @@
       // barra lateral
       'nav.characters': 'Personajes',
       'nav.gallery': 'Galería',
-      'nav.framings': 'Framings',
+      'nav.framings': 'Encuadres',
       'nav.accessories': 'Accesorios',
       'nav.globals': 'Prompts globales',
       'lang.label': 'Idioma',
@@ -54,12 +54,12 @@
       'char.deleteMsg': 'Eliminar {key} con sus {bases} bases y {variants} variantes (y sus imágenes).',
       'char.needBase': 'Generá al menos una base antes de crear variantes: las variantes toman la cara de una base ya generada.',
       'char.identityLegend': 'Identidad (solo rasgos — la ropa se define por base/variante)',
-      'char.lighting': 'Lighting',
-      'char.identity': 'Identity',
-      'char.face': 'Face',
-      'char.hair': 'Hair',
-      'char.body': 'Body',
-      'char.negativeIdentity': 'Negative identity (rasgos, NUNCA ropa)',
+      'char.lighting': 'Iluminación',
+      'char.identity': 'Identidad',
+      'char.face': 'Rostro',
+      'char.hair': 'Cabello',
+      'char.body': 'Cuerpo',
+      'char.negativeIdentity': 'Identidad negativa (rasgos, NUNCA ropa)',
       'char.saveIdentity': 'Guardar identidad',
       'char.bases': 'Bases',
       'char.variants': 'Variantes',
@@ -73,7 +73,7 @@
       'item.generate': 'Generar',
       'item.clone': 'Clonar',
       'item.inpaintAction': 'Inpintar',
-      'item.inpaintHint': 'inpaint: {label} — click para ver/reusar la config',
+      'item.inpaintHint': 'inpaint: {label} — clic para ver/reusar la config',
       'item.deleteBaseMsg': 'Eliminar base {id} y su imagen.',
       'item.deleteVariantMsg': 'Eliminar variante {label} y su imagen.',
       'item.deleteInpaintMsg': 'Eliminar inpaint {label} y su imagen.',
@@ -103,7 +103,7 @@
       'gallery.negative': 'Prompt negativo',
       'gallery.originalForm': 'Prompt original del formulario',
       'gallery.scenePrompt': 'Prompt de escena (variante origen)',
-      'gallery.settings': 'Settings',
+      'gallery.settings': 'Ajustes',
       'gallery.noClothing': 'sin ropa',
       'gallery.baseTitle': 'base {id}',
       'gallery.variantTitle': 'variante {id}',
@@ -112,22 +112,22 @@
       // propiedades del modal de galería
       'prop.created': 'creada',
       'prop.character': 'personaje',
-      'prop.seed': 'seed',
-      'prop.steps': 'steps',
+      'prop.seed': 'semilla',
+      'prop.steps': 'pasos',
       'prop.cfg': 'cfg',
-      'prop.sampler': 'sampler',
-      'prop.schedule': 'scheduler',
+      'prop.sampler': 'muestreador',
+      'prop.schedule': 'planificador',
       'prop.model': 'modelo',
       'prop.clothing': 'ropas',
       'prop.framing': 'encuadre',
       'prop.expression': 'expresión',
       'prop.accessories': 'accesorios',
       'prop.identity': 'identidad',
-      'prop.strength': 'strength',
+      'prop.strength': 'fuerza',
       'prop.size': 'tamaño',
       'prop.base': 'base',
       'prop.region': 'región',
-      'prop.denoise': 'denoise',
+      'prop.denoise': 'intensidad',
       'prop.anchor': 'anclaje',
       'prop.variant': 'variante',
       'prop.rembg': 'quitar fondo',
@@ -135,7 +135,7 @@
       'prop.no': 'no',
 
       // framings / accesorios / globales
-      'coll.framings': 'Framings',
+      'coll.framings': 'Encuadres',
       'coll.accessories': 'Accesorios',
       'coll.new': '+ Nuevo',
       'coll.key': 'Clave',
@@ -155,19 +155,19 @@
       'charModal.key': 'Clave (minúsculas, dígitos o _)',
       'charModal.keyPlaceholder': 'ej: lucia',
       'charModal.identityPlaceholder': '1girl, young woman, early 20s, pale skin, slim build, oval face',
-      'charModal.negative': 'Negative identity (solo rasgos)',
+      'charModal.negative': 'Identidad negativa (solo rasgos)',
       'charModal.create': 'Crear',
       'charModal.cancel': 'Cancelar',
 
       // ajustes de generación compartidos
-      'common.steps': 'Steps',
+      'common.steps': 'Pasos',
       'common.cfg': 'CFG',
-      'common.sampler': 'Sampler',
-      'common.schedule': 'Schedule',
+      'common.sampler': 'Muestreador',
+      'common.schedule': 'Planificador',
       'common.model': 'Modelo',
-      'common.framing': 'Framing',
-      'common.strength': 'Strength',
-      'common.seed': 'Seed',
+      'common.framing': 'Encuadre',
+      'common.strength': 'Fuerza',
+      'common.seed': 'Semilla',
       'common.settings': 'Ajustes',
       'common.generate': 'Generar',
       'common.regenerate': 'Regenerar',
@@ -189,7 +189,7 @@
       'baseModal.clothingPlaceholder': 'ej: shirtless, bare chest / 1piece swimsuit, white',
       'baseModal.negative': 'Negativo extra (contrario de la ropa elegida)',
       'baseModal.negativePlaceholder': 'ej: fully clothed, shirt on',
-      'baseModal.seedRandom': 'Seed aleatorio',
+      'baseModal.seedRandom': 'Semilla aleatoria',
 
       // modal: variante
       'variantModal.aria': 'Variante',
@@ -212,7 +212,7 @@
       'variantModal.methodIpadapter': 'IP-Adapter (cara de la base)',
       'variantModal.ipadapterHint': 'IP-Adapter: obligatorio, mayor que 0 y hasta 1, en pasos de 0.05.',
       'variantModal.photomakerHint': 'PhotoMaker: obligatorio, mayor que 0 y hasta 100, en pasos de 1.',
-      'variantModal.seedAuto': 'Seed automático (nuevo en cada generación)',
+      'variantModal.seedAuto': 'Semilla automática (nueva en cada generación)',
 
       // modal: inpaint
       'inpaintModal.aria': 'Inpaint',
@@ -229,7 +229,7 @@
       'inpaintModal.identityLegend': 'Anclaje de identidad',
       'inpaintModal.mode': 'Modo',
       'inpaintModal.modeNone': 'Ninguno (libre, puede divergir de la cara original)',
-      'inpaintModal.modePrompt': 'Prompt de identidad (identity/face/hair del personaje)',
+      'inpaintModal.modePrompt': 'Prompt de identidad (identidad/rostro/cabello del personaje)',
       'inpaintModal.modePhotomaker': 'PhotoMaker (referencia de la base)',
       'inpaintModal.modeIpadapter': 'IP-Adapter (referencia de la base)',
       'inpaintModal.promptHint': 'Antepone identity/face/hair del personaje al prompt de la región — no requiere modelos extra.',
@@ -309,10 +309,10 @@
       'toast.importFailed': 'Import inválido: {msg}',
 
       // validaciones del front
-      'validation.strengthRequired': '{label}: strength es obligatorio.',
-      'validation.strengthInvalid': 'Strength inválido.',
-      'validation.ipadapterRange': 'IP-Adapter: strength debe ser mayor que 0 y hasta 1.',
-      'validation.photomakerRange': 'PhotoMaker: strength debe ser mayor que 0 y hasta 100.',
+      'validation.strengthRequired': '{label}: la fuerza es obligatoria.',
+      'validation.strengthInvalid': 'Fuerza inválida.',
+      'validation.ipadapterRange': 'IP-Adapter: la fuerza debe ser mayor que 0 y hasta 1.',
+      'validation.photomakerRange': 'PhotoMaker: la fuerza debe ser mayor que 0 y hasta 100.',
       'validation.labelRequired': 'Poné un identificador para la imagen.',
       'validation.labelInvalid': 'Identificador inválido: solo letras, números, _ y -.',
       'validation.promptRequired': 'El prompt de inpainting es obligatorio.',
@@ -321,10 +321,10 @@
       // errores del server (claves estables)
       'errors.characterNotFound': 'Personaje no encontrado',
       'errors.characterNotFoundNamed': 'Personaje no encontrado: {key}',
-      'errors.framingNotFound': 'Framing no encontrado: {key}',
+      'errors.framingNotFound': 'Encuadre no encontrado: {key}',
       'errors.accessoryNotFound': 'Accesorio no encontrado: {key}',
-      'errors.samplerUnknown': 'Sampler desconocido "{name}".',
-      'errors.scheduleUnknown': 'Scheduler desconocido "{schedule}".',
+      'errors.samplerUnknown': 'Muestreador desconocido "{name}".',
+      'errors.scheduleUnknown': 'Planificador desconocido "{schedule}".',
       'errors.faceModelMissing': 'SD_AD_FACE_MODEL no está configurado en .env — requerido para PhotoMaker/IP-Adapter.',
       'errors.timeout': 'Timeout ({ms}ms)',
       'errors.keyRequired': 'Falta la clave',
@@ -361,10 +361,10 @@
       'errors.methodUnknown': 'Método desconocido: {method}',
       'errors.regionUnknown': 'Región desconocida: {region}',
       'errors.regionModelMissing': 'La región {region} requiere {model} configurado en .env.',
-      'errors.strengthRequired': '{label}: strength es obligatorio.',
-      'errors.strengthInvalid': 'Strength inválido.',
-      'errors.ipadapterRange': 'IP-Adapter: strength debe ser mayor que 0 y hasta 1.',
-      'errors.photomakerRange': 'PhotoMaker: strength debe ser mayor que 0 y hasta 100.',
+      'errors.strengthRequired': '{label}: la fuerza es obligatoria.',
+      'errors.strengthInvalid': 'Fuerza inválida.',
+      'errors.ipadapterRange': 'IP-Adapter: la fuerza debe ser mayor que 0 y hasta 1.',
+      'errors.photomakerRange': 'PhotoMaker: la fuerza debe ser mayor que 0 y hasta 100.',
       'errors.photomakerFaceModelMissing': 'PhotoMaker/IP-Adapter requieren SD_AD_FACE_MODEL configurado en .env',
       'errors.photomakerPathMissing': 'PhotoMaker requiere SD_PHOTOMAKER_PATH configurado en .env',
       'errors.ipadapterPathMissing': 'IP-Adapter requiere SD_IP_ADAPTER_PATH y SD_CLIP_VISION_PATH en .env',
@@ -753,12 +753,8 @@
       const saved = normalize(root.localStorage && root.localStorage.getItem('charmaker2.lang'));
       if (saved) return saved;
     } catch { /* localStorage bloqueado */ }
-    const nav = root.navigator || {};
-    const candidates = nav.languages && nav.languages.length ? nav.languages : [nav.language];
-    for (const candidate of candidates) {
-      const normalized = normalize(candidate);
-      if (normalized) return normalized;
-    }
+    // La app es español-first: por defecto 'es' (el inglés se elige desde el
+    // selector —queda persistido— o con ?lang=en).
     return DEFAULT;
   }
 

@@ -32,7 +32,7 @@
         </div>
         <label class="lang-select">
           <span x-text="t('lang.label')"></span>
-          <select x-model="lang" @change="setLang(lang)">
+          <select x-model="lang" @change="setLang($event.target.value)" x-init="$nextTick(() => { $el.value = lang; })">
             <template x-for="l in languages" :key="l.code"><option :value="l.code" x-text="l.label"></option></template>
           </select>
         </label>
@@ -199,7 +199,7 @@
             <template x-for="g in galleryFiltered()" :key="g.kind+g.id">
               <div class="gallery-tile" @click="openGalleryItem(g)">
                 <img :src="imgSrc(g.image_path)" loading="lazy">
-                <span class="gallery-badge" x-text="g.kind"></span>
+                <span class="gallery-badge" x-text="t('item.' + g.kind)"></span>
                 <div class="gallery-caption">
                   <b x-text="g.character"></b>
                   <span class="muted small ellipsis" x-text="galleryItemTitle(g)"></span>
@@ -467,6 +467,20 @@
                 <input x-model="inpaintModal.draft.label" :placeholder="t('inpaintModal.labelPlaceholder')">
               </label>
               <p class="muted small"><span x-text="t('inpaintModal.willSaveAs')"></span> <b x-text="`${inpaintModal.source.label || t('item.variant')}_${inpaintModal.draft.label || '…'}`"></b></p>
+
+              <details class="settings-details">
+                <summary x-text="t('common.settings')"></summary>
+                <div class="gen-settings">
+                  <label><span x-text="t('common.steps')"></span> <input type="number" x-model.number="inpaintModal.draft.steps" min="1" max="150"></label>
+                  <label><span x-text="t('common.cfg')"></span> <input type="number" step="0.1" x-model.number="inpaintModal.draft.cfg"></label>
+                  <label><span x-text="t('common.sampler')"></span> <select x-model="inpaintModal.draft.sampler" x-init="$nextTick(() => { $el.value = inpaintModal.draft.sampler; })">
+                    <template x-for="s in samplers"><option :value="s" x-text="s"></option></template>
+                  </select></label>
+                  <label><span x-text="t('common.schedule')"></span> <select x-model="inpaintModal.draft.schedule" x-init="$nextTick(() => { $el.value = inpaintModal.draft.schedule; })"><template x-for="s in schedules"><option :value="s" x-text="s"></option></template></select></label>
+                  <label class="full"><span x-text="t('common.model')"></span> <select x-model="inpaintModal.draft.model" x-init="$nextTick(() => { $el.value = inpaintModal.draft.model; })"><template x-for="m in models"><option :value="m" x-text="m"></option></template></select></label>
+                </div>
+              </details>
+
               <label><span x-text="t('inpaintModal.promptLabel')"></span>
                 <textarea x-model="inpaintModal.draft.prompt" rows="2" :placeholder="t('inpaintModal.promptPlaceholder')"></textarea></label>
               <label><span x-text="t('inpaintModal.negative')"></span>
@@ -509,19 +523,6 @@
                 <p class="muted small" x-show="!config.identityMethods.photomaker && !config.identityMethods.ipadapter" x-text="t('inpaintModal.modelsNotConfigured')"></p>
               </fieldset>
 
-              <fieldset>
-                <legend x-text="t('common.settings')"></legend>
-                <div class="gen-settings">
-                  <label><span x-text="t('common.steps')"></span> <input type="number" x-model.number="inpaintModal.draft.steps" min="1" max="150"></label>
-                  <label><span x-text="t('common.cfg')"></span> <input type="number" step="0.1" x-model.number="inpaintModal.draft.cfg"></label>
-                  <label><span x-text="t('common.sampler')"></span> <select x-model="inpaintModal.draft.sampler" x-init="$nextTick(() => { $el.value = inpaintModal.draft.sampler; })">
-                    <template x-for="s in samplers"><option :value="s" x-text="s"></option></template>
-                  </select></label>
-                  <label><span x-text="t('common.schedule')"></span> <select x-model="inpaintModal.draft.schedule" x-init="$nextTick(() => { $el.value = inpaintModal.draft.schedule; })"><template x-for="s in schedules"><option :value="s" x-text="s"></option></template></select></label>
-                  <label class="full"><span x-text="t('common.model')"></span> <select x-model="inpaintModal.draft.model" x-init="$nextTick(() => { $el.value = inpaintModal.draft.model; })"><template x-for="m in models"><option :value="m" x-text="m"></option></template></select></label>
-                </div>
-              </fieldset>
-
               <label class="check"><input type="checkbox" x-model="inpaintModal.draft.seedAuto"> <span x-text="t('variantModal.seedAuto')"></span></label>
               <label><span x-text="t('common.seed')"></span> <input type="number" x-model="inpaintModal.draft.seed" :readonly="inpaintModal.draft.seedAuto"></label>
               <label class="check"><input type="checkbox" x-model="inpaintModal.draft.rembg" :disabled="!config.rembg.available"> <span x-text="t('common.rembg')"></span></label>
@@ -560,7 +561,7 @@
           <div class="view-header">
             <h3>
               <span x-text="galleryModal.item.character"></span>
-              <span class="muted small" x-text="`· ${galleryModal.item.kind} ${galleryModal.item.id} · ${galleryItemTitle(galleryModal.item)}`"></span>
+              <span class="muted small" x-text="`· ${t('item.' + galleryModal.item.kind)} ${galleryModal.item.id} · ${galleryItemTitle(galleryModal.item)}`"></span>
             </h3>
             <div class="btn-row">
               <a class="btn btn-sm" :href="galleryModal.item.image_path" :download="galleryDownloadName(galleryModal.item)" x-text="t('gallery.download')"></a>

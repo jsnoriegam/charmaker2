@@ -300,6 +300,23 @@ legend { color: var(--muted); font-size: 12px; padding: 0 6px; }
 .gen-settings .full { grid-column: 1 / -1; }
 .gen-settings label.check { grid-column: 1 / -1; }
 
+/* "Ajustes" colapsable (oculto por defecto): <details>/<summary> nativo. */
+.settings-details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 12px 0;
+  padding: 0 14px 12px;
+}
+.settings-details > summary {
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 12px 0 8px;
+  user-select: none;
+}
+.settings-details[open] > summary { color: var(--text); }
+.settings-details .gen-settings { margin-top: 2px; }
+
 .acc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 10px; margin-bottom: 10px; }
 .acc-grid label.check { font-size: 12px; margin-bottom: 2px; }
 
